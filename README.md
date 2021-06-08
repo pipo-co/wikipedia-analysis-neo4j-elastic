@@ -36,5 +36,6 @@ Nos parece que tiene mucho valor poder realizar estos dos tipos de consultas sim
 
 En general vamos a buscar realizar consultas donde el punto de partida sea el articulo centro, pues garantizamos que obtuvimos todas las relaciones de este articulo, por lo que el resultado de la consulta refleja perfectamnete el de Wikipedia. Realizar consultas entre 2 o mas articulos cercanos al borde de nuestro grafico no tiene mucho sentido, pues muchas relaciones entre articulos estaran faltando. Para este tipo de consultas convendra ejecutar el ETL nuevamente, configurando un nuevo centro.
 
-- "Quiero todos los titulos de los articulos de la categoria 'Plantas' que esten a menos de 5 saltos de la pagina de wikipedia de 'Jazmin' y que se sean de la misma familia biologica"
-- "Quiero todos los titulos de los articulos de la categoria 'Perfumes' que esten a menos de 5 saltos de la pagina de wikipedia de 'Jazmin' y que contengan la palabra 'Aroma' ordenado por su cantidad de apariciones"
+Ideas particulares:
+  - "Quiero todos los titulos de los articulos de la categoria 'Plantas' que esten a menos de 5 saltos de la pagina de wikipedia de 'Jazmin' y que se sean de la misma familia biologica"
+  - "Quiero todos los titulos de los articulos de la categoria 'Perfumes' que esten a menos de 5 saltos de la pagina de wikipedia de 'Jazmin' y que contengan la palabra 'Aroma' ordenado por su cantidad de apariciones"
