@@ -12,7 +12,9 @@ En elastic el id tambien sera el id del articulo (de esta manera los contenidos 
 
 ### Aplicacion
 La logica de aplicacion sera desarrollada en python, pues cuenta con sencillos clientes para Neo4j y ElasticSearch. Se espera que la conexion con Wikipedia utilizando este lenguaje tambien sea sencilla.
+
 Para facilidad de uso, en principio se propone que la herramienta sea un servidor que exponga sus funcionalidades mediante una API HTTP, donde uno de los endpoints sera la funcionalidad ETL, y el resto seran funcionalidades de busqueda. Para inicializar el servidor deberan ser provistos los parametros de conexion a las bases Neo4j y ElasticSearch donde se quieran cargar o analizar los datos.
+
 Las respuestas seran en formato JSON todavia a definir (probablemente parecido al de la interfaz HTTP de Neo).
 En principio no hay expectativa de desarrollo de un entorno grafico o de visualizacion de los datos, pero no descartamos la posibilidad de desarrollar una simple interfaz web para interactuar con el servidor, o encontrar alguna herramienta para visualizar el grafo de los articulos
 
