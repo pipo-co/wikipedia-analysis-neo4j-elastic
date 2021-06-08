@@ -27,7 +27,14 @@ En principio no hay expectativa de desarrollo de un entorno grafico o de visuali
   - Cantidad maxima de saltos a traer de la base de datos de wikipedia (para evitar tener que traerla entera)
   - `Opcional`. Lista de categorias de articulos a traer. De no especificarse se traeran los articulos de cualquier categoria.
 
-#### Busquedas propuestas
+#### Busquedas
+Elastic nos permite hacer busquedas exact y fuzzy del contenido y del titulo de los articulos.
 
+Neo nos permite consultar las relaciones entre articulos, como articulos cercanos, la distancia entre dos articulos, si existe camino entre 2 articulos, etc.
+
+Nos parece que tiene mucho valor poder realizar estos dos tipos de consultas simultaneamente para analizar rapidamente la estructura y el contenido de Wikipedia con facilidad y sencillez.
+
+En general vamos a buscar realizar consultas donde el punto de partida sea el articulo centro, pues garantizamos que obtuvimos todas las relaciones de este articulo, por lo que el resultado de la consulta refleja perfectamnete el de Wikipedia.
+Realizar consultas entre 2 o mas articulos cercanos al borde de nuestro grafico no tiene mucho sentido, pues muchas relaciones entre articulos estaran faltando. Para este tipo de consultas convendra ejecutar el ETL nuevamente, configurando un nuevo centro.
 
 
