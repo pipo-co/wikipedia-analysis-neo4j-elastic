@@ -61,8 +61,6 @@ async def import_parameters(center_param: str = Form(...), lang_param: str = For
             "lang": lang, 
             "radius": radius, 
             "category": category,
-            "elastic": elastic_parameters["ip"]+':'+str(elastic_parameters["port"]),
-            "neo4j": neo_parameters["ip"]+':'+str(neo_parameters["port"]),
     }
 
 @app.get("/test-elastic-post")
