@@ -1,3 +1,4 @@
+import re
 from typing import Optional
 from datetime import datetime
 from elasticsearch import Elasticsearch
@@ -6,16 +7,19 @@ from starlette.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 import starlette.status as status
 import wikipedia
+from Neo4jWrapper import Neo4jWrapper
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates/")
 elastic_parameters = {}
 neo_parameters = {}
 center = ''
+article = None
 lang = ''
 radius = None
 category = None
 es = None
+neo = None
 
 @app.get("/")
 def setup(request: Request):
@@ -33,14 +37,16 @@ def setup(request: Request):
 @app.post("/setup")
 async def setup(request: Request, elastic_ip: str = Form(...), elastic_port: int = Form(...),
             neo_ip: str = Form(...), neo_port: int = Form(...)):
-    global elastic_parameters, neo_parameters, es
+    global elastic_parameters, neo_parameters, es, neo
     
     elastic_parameters["ip"] = elastic_ip
     elastic_parameters["port"] = elastic_port
     neo_parameters["ip"] = neo_ip
     neo_parameters["port"] = neo_port
     
+    # db auth not implemented yet
     es = Elasticsearch(HOST=elastic_parameters["ip"],PORT=elastic_parameters["port"])
+    neo = Neo4jWrapper(neo_parameters["ip"], neo_parameters["port"], "neo4j", "password")
 
     return RedirectResponse('/import-parameters', status_code=status.HTTP_302_FOUND)
 
@@ -57,11 +63,9 @@ async def import_parameters(center_param: str = Form(...), lang_param: str = For
     radius = radius_param
     category = category_param
 
-    return {"center":  center, 
-            "lang": lang, 
-            "radius": radius, 
-            "category": category,
-    }
+    wikipedia.set_lang(lang)
+
+    return RedirectResponse('/disambiguation', status_code=status.HTTP_302_FOUND)
 
 @app.get("/test-elastic-post")
 def elastic_test_post(request: Request):
