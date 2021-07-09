@@ -7,7 +7,7 @@ from starlette.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 import starlette.status as status
 import wikipedia
-from Neo4jWrapper import Neo4jWrapper
+from neo4j_repo import Neo4jRepository
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates/")
@@ -46,7 +46,7 @@ async def setup(request: Request, elastic_ip: str = Form(...), elastic_port: int
     
     # db auth not implemented yet
     es = Elasticsearch(HOST=elastic_parameters["ip"],PORT=elastic_parameters["port"])
-    neo = Neo4jWrapper(neo_parameters["ip"], neo_parameters["port"], "neo4j", "password")
+    neo = Neo4jRepository(neo_parameters["ip"], neo_parameters["port"], "neo4j", "password")
 
     return RedirectResponse('/import-parameters', status_code=status.HTTP_302_FOUND)
 
