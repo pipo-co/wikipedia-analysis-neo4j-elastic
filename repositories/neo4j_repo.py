@@ -18,11 +18,6 @@ class Neo4jRepository:
         name_result: Result = tx.run('CREATE CONSTRAINT article_unique_name ON (a:Article) ASSERT a.article_name IS UNIQUE')
         name_result.consume()
 
-    @staticmethod
-    def _truncate_db(tx) -> None:
-        name_result: Result = tx.run('MATCH (n)-[r]-(m) DELETE n, r')
-        name_result.consume()
-
     def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str], database: Optional[str] = None) -> None:
         auth: Optional[Tuple[str, str]] = (user, password) if user and password else None
 
@@ -46,14 +41,23 @@ class Neo4jRepository:
                 if e.code != _INDEX_ALREADY_EXISTS_CODE:
                     raise e
 
-            # Trunco la db seleccionada
-            session.write_transaction(self._truncate_db)
-
     def session(self) -> Session:
         return self.driver.session(database=self.db)
 
     def close(self):
         self.driver.close()
+
+    def truncate_db(self, session: Optional[Session] = None):
+        if session:
+            return session.write_transaction(self._truncate_db)
+        else:
+            with self.session() as session:
+                return session.write_transaction(self._truncate_db)
+
+    @staticmethod
+    def _truncate_db(tx) -> None:
+        name_result: Result = tx.run('MATCH (n)-[r]-() DELETE n, r')
+        name_result.consume()
 
     def create_article(self, id: int, title: str, categories: List[str], session: Optional[Session] = None) -> bool:
         """

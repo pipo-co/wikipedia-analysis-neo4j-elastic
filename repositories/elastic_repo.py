@@ -27,17 +27,17 @@ class ElasticRepository:
         # Crea una conexion global con el nombre 'repo_id'
         connections.create_connection(self.repo_id, hosts=[f'{ip}:{port}'], http_auth=auth)
 
-        index: Index = Index(index, using=self.repo_id)
-        index.document(ElasticArticle)
-
-        # Si el indice ya existe, lo borramos
-        index.delete(ignore=[400, 404])
-
         # Creamos el indice
-        index.create()
+        self.index: Index = Index(index, using=self.repo_id)
+        self.index.document(ElasticArticle)
+        self.index.save()
 
     def close(self) -> None:
         connections.remove_connection(self.repo_id)
+
+    def truncate_db(self):
+        self.index.delete()
+        self.index.create()
 
     def create_article(self, id: int, title: str, content: str, categories: List[str]) -> ElasticArticle:
         article: ElasticArticle = ElasticArticle(article_id=id, title=title, content=content, categories=categories)
