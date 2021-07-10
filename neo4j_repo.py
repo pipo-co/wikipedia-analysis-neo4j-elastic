@@ -22,7 +22,7 @@ class Neo4jRepository:
         self.driver = GraphDatabase.driver(f"neo4j://{ip}:{port}", auth=auth)
         self.db = database if database else neo4j.DEFAULT_DATABASE
 
-        with self._session() as session:
+        with self.session() as session:
             # Recien en Neo4j 4.3.1 introdujeron IF NOT EXISTS. Por ahora atrapamos la excepcion cuando la constraint ya existe
 
             # id constraint
@@ -39,21 +39,24 @@ class Neo4jRepository:
                 if e.code != 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists':
                     raise e
 
-    def _session(self) -> Session:
+    def session(self) -> Session:
         return self.driver.session(database=self.db)
 
     def close(self):
         self.driver.close()
 
-    def create_article(self, id: int, title: str, categories: List[str]) -> bool:
+    def create_article(self, id: int, title: str, categories: List[str], session: Optional[Session] = None) -> bool:
         """
         Parameters:
         id - Wikipedia's article id.
         title - Wikipedia's article title.
         categories - List of the categories the article is in
         """
-        with self._session() as session:
+        if session:
             return session.write_transaction(self._create_article_node, id, title, categories)
+        else:
+            with self.session() as session:
+                return session.write_transaction(self._create_article_node, id, title, categories)
 
     @staticmethod
     def _create_article_node(tx, id: int, title: str, categories: List[str]) -> bool:
@@ -64,15 +67,18 @@ class Neo4jRepository:
 
         return result.consume().counters.nodes_created == 1
 
-    def create_and_link_article(self, source_id: int, dest_id: int, dest_title: str, dest_categories: List[str]) -> bool:
+    def create_and_link_article(self, source_id: int, dest_id: int, dest_title: str, dest_categories: List[str], session: Optional[Session] = None) -> bool:
         """
         Parameters:
         id - Wikipedia's article id.
         title - Wikipedia's article title.
         categories - List of the categories the article is in
         """
-        with self._session() as session:
+        if session:
             return session.write_transaction(self._create_and_link_article, source_id, dest_id, dest_title, dest_categories)
+        else:
+            with self.session() as session:
+                return session.write_transaction(self._create_and_link_article, source_id, dest_id, dest_title, dest_categories)
 
     @staticmethod
     def _create_and_link_article(tx, source_id: int, dest_id: int, dest_title: str, dest_categories: List[str]) -> bool:
@@ -85,19 +91,22 @@ class Neo4jRepository:
         summary: ResultSummary = result.consume()
 
         if summary.counters.relationships_created == 0:
-            raise Neo4jWriteException(f'Tried to create duplicated relationship from node {source_id} to node {dest_id}. Summary counters: {summary.counters}')
+            print(f'Relationship from node {source_id} to node {dest_id} wasn\'t created. Summary counters: {repr(summary.counters)}')
 
         return summary.counters.nodes_created == 1
 
-    def link_article(self, source_id: int, dest_title: str) -> None:
+    def link_article(self, source_id: int, dest_title: str, session: Session) -> None:
         """
         Parameters:
         id - Wikipedia's article id.
         title - Wikipedia's article title.
         categories - List of the categories the article is in
         """
-        with self._session() as session:
+        if session:
             return session.write_transaction(self._link_article, source_id, dest_title)
+        else:
+            with self.session() as session:
+                return session.write_transaction(self._link_article, source_id, dest_title)
 
     @staticmethod
     def _link_article(tx, source_id: int, dest_title: str) -> None:
@@ -117,7 +126,7 @@ class Neo4jRepository:
         id - Wikipedia's article id.
         related_articles - List of article ids that are linked to the main article
         """
-        with self._session() as session:
+        with self.session() as session:
             session.write_transaction(self._create_article_relationships, id, related_articles)
     
     @staticmethod
