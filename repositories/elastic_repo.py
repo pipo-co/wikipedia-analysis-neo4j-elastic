@@ -1,7 +1,8 @@
 from typing import Optional, List
 
-from elasticsearch_dsl import Index, Document, Text, Keyword, analyzer
+from elasticsearch_dsl import Index, Document, Text, Keyword, Search, Q, response, analyzer
 from elasticsearch_dsl.connections import connections
+from six import string_types
 
 _content_analyzer = analyzer(
     'folding_analyzer',
@@ -44,6 +45,8 @@ class ElasticRepository:
         article.save()
         return article
 
-
-
-
+    def strict_search_query(self, string: str, leaps: int) -> response:
+        s = Search()
+        s = s.query('query_string', **{'query': 'Python (programming language)', 'default_field': 'content'})
+        # s = s.query("query_string", query=string, fields=['content'])
+        return s.execute()

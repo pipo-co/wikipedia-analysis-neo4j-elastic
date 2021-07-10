@@ -2,6 +2,7 @@ from typing import List, Optional, Tuple
 
 import neo4j
 from neo4j import GraphDatabase, Session, Result, ResultSummary
+from neo4j.data import Record
 from neo4j.exceptions import ClientError
 
 _INDEX_ALREADY_EXISTS_CODE: str = 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists'
@@ -130,6 +131,18 @@ class Neo4jRepository:
         if result.consume().counters.relationships_created == 0:
             raise Neo4jWriteException(f'Tried to create duplicated relationship from node {source_id} to node `{dest_title}`')
 
+    def radius_search(self, center: str, string: str, leaps: int) -> Record:
+        with self.session() as session:
+            return session.write_transaction(self._radius_search, center, string, leaps)
+    
+    @staticmethod
+    def _radius_search(tx, center: str, string: str, leaps: int) -> Record:
+        result = tx.run(
+            "MATCH (center:Article {title: $center_title}), (exterior:Article {title: $ext_title}), "
+            "p = shortestPath((center)-[*1.."+str(leaps)+"]-(exterior)) RETURN exterior",
+            center_title=center, ext_title=string
+        )
+        return result.single()
 # Custom Exceptions
 class Neo4jWriteException(Exception):
     pass

@@ -1,4 +1,5 @@
 import concurrent.futures
+from dataclasses import asdict
 import itertools
 from collections import deque
 from typing import Optional, Dict, Deque, List, Iterator, Any, Tuple
@@ -163,7 +164,6 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                     print(f'({current_node.title})-->({page.title}). Current Ring: {ring_count}. Current Node in Ring: {current_ring_count}. Current relationship: {current_node_count}. Total: {current_node_count}')
 
     return total_nodes_imported
-
 
 # Para testear
 if __name__ == '__main__':
