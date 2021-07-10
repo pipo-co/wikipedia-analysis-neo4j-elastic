@@ -1,18 +1,21 @@
 import concurrent.futures
 import itertools
-import pstats
 from collections import deque
 from typing import Optional, Dict, Deque, List, Iterator, Any, Tuple
 
-from elasticsearch import Elasticsearch
+from elasticsearch_dsl import Completion
 from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
 
+from elastic_repo import ElasticRepository
 from models import ImportArticleNode
 from neo4j_repo import Neo4jRepository
 
 INVALID_LINK: int = -1
 MAX_CATEGORIES: int = 49
 MAX_LINKS_PER_CATEGORY_FILTER_REQ: int = 49  # Un changui
+
+def main():
+    import_wiki("Titanic (1997 film)", 3, ['English-language films'])
 
 # Filtra links invalidos
 def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories: List[str], executor: concurrent.futures.ThreadPoolExecutor) -> Tuple[List[str], List[concurrent.futures.Future]]:
@@ -42,9 +45,6 @@ def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories:
 
     return invalid_links, link_request_futures
 
-def main():
-    import_wiki("Python (programming language)", 3, ['Class-based programming languages', 'Object-oriented programming languages'])
-
 def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> None:
     if len(categories) > MAX_CATEGORIES or len(categories) == 0:
         raise ValueError(f'Max filtering categories on import is {MAX_CATEGORIES}')
@@ -53,7 +53,7 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
 
     wikipedia: MediaWiki = MediaWiki(lang=lang, user_agent='neo_elastic_scraper; tbrandy@itba.edu.ar')
 
-    # es = Elasticsearch(HOST=elastic_parameters["ip"], PORT=elastic_parameters["port"])
+    es = ElasticRepository('localhost', '9200', index='wikipedia')
     neo = Neo4jRepository('localhost', '7687', "neo4j", "tobias")
 
     # Utilizamos cola pues BFS
@@ -67,7 +67,9 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
 
     # Utilizamos una sola sesion de neo para el procecso de importacion
     with neo.session() as neo_session:
+        # Cargamos centro en las db
         neo.create_article(center_node.id, center_node.title, center_page.categories)
+        es.create_article(center_node.id, center_node.title, center_page.content, center_page.categories)
 
         title_dist_dict[center_page.title] = 0
         node_q.append(center_node)
@@ -152,6 +154,9 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                     # Creo nodo y relacion en neo
                     if not neo.create_and_link_article(current_node.id, pageid, page.title, page.categories, neo_session):
                         raise Exception('Un nodo que pense que tenia que crear, ya esta creado')
+
+                    # Creo articulo en elastic
+                    es.create_article(pageid, page.title, page.content, page.categories)
 
                     # Pongo el nuevo nodo en las estructuras
                     title_dist_dict[page.title] = current_dist + 1
