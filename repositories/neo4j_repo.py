@@ -1,3 +1,4 @@
+from models import ArticleNode
 from typing import List, Optional, Tuple
 
 import neo4j
@@ -143,10 +144,18 @@ class Neo4jRepository:
     def _radius_search(tx, center: str, string: str, leaps: int) -> Record:
         result = tx.run(
             "MATCH (center:Article {title: $center_title}), (exterior:Article {title: $ext_title}), "
-            "p = shortestPath((center)-[*1.."+str(leaps)+"]-(exterior)) RETURN exterior",
+            "p = shortestPath((center)-[*1.."+str(leaps)+"]-(exterior)) "
+            "match (exterior)-[r]->(m) "
+            "return {article_id: exterior.article_id, title: exterior.title, categories: exterior.categories, " 
+            "links: collect({article_id: m.article_id, title: m.title})}",
             center_title=center, ext_title=string
         )
         return result.single()
+
+def mapper(record: Record) -> ArticleNode:
+        return ArticleNode(id=record['article_id'], title=record['title'], 
+                        categories=record['categories'], links=record['links'])
+
 # Custom Exceptions
 class Neo4jWriteException(Exception):
     pass

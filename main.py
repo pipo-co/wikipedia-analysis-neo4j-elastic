@@ -4,6 +4,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
 import starlette.status as status
+from querys import strict_search_query
 
 from dependencies import databases
 from dependencies.settings import settings
@@ -32,6 +33,10 @@ class WikipediaImportRequest(BaseModel):
 @app.post("/import")
 def wikipedia_import(import_request: WikipediaImportRequest):
     return import_wiki(import_request.center_page, import_request.radius, import_request.categories, import_request.lang)
+
+@app.get("/strict_search")
+def strict_searc(source: str, string: str, leaps: int):
+    strict_search_query(source, string, leaps)
 
 # @app.get("/")
 # def setup(request: Request):
