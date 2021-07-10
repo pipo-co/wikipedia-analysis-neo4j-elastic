@@ -3,19 +3,15 @@ import itertools
 from collections import deque
 from typing import Optional, Dict, Deque, List, Iterator, Any, Tuple
 
-from elasticsearch_dsl import Completion
 from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
 
-from elastic_repo import ElasticRepository
+from dependencies.databases import es, neo
 from models import ImportArticleNode
-from neo4j_repo import Neo4jRepository
 
 INVALID_LINK: int = -1
 MAX_CATEGORIES: int = 49
 MAX_LINKS_PER_CATEGORY_FILTER_REQ: int = 49  # Un changui
-
-def main():
-    import_wiki("Titanic (1997 film)", 3, ['English-language films'])
+WIKIPEDIA_USER_AGENT: str = 'neo_elastic_scraper; tbrandy@itba.edu.ar'
 
 # Filtra links invalidos
 def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories: List[str], executor: concurrent.futures.ThreadPoolExecutor) -> Tuple[List[str], List[concurrent.futures.Future]]:
@@ -45,16 +41,14 @@ def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories:
 
     return invalid_links, link_request_futures
 
-def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> None:
+def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> int:
     if len(categories) > MAX_CATEGORIES or len(categories) == 0:
         raise ValueError(f'Max filtering categories on import is {MAX_CATEGORIES}')
+
     # Normalizo las categorias
     categories = ['Category:' + cat for cat in categories]
 
-    wikipedia: MediaWiki = MediaWiki(lang=lang, user_agent='neo_elastic_scraper; tbrandy@itba.edu.ar')
-
-    es = ElasticRepository('localhost', '9200', index='wikipedia')
-    neo = Neo4jRepository('localhost', '7687', "neo4j", "tobias")
+    wikipedia: MediaWiki = MediaWiki(lang=lang, user_agent=WIKIPEDIA_USER_AGENT)
 
     # Utilizamos cola pues BFS
     node_q: Deque[ImportArticleNode] = deque()
@@ -65,7 +59,7 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
     center_page: MediaWikiPage = wikipedia.page(center_title, auto_suggest=False)
     center_node: ImportArticleNode = ImportArticleNode(int(center_page.pageid), center_page.title, center_page.links)
 
-    # Utilizamos una sola sesion de neo para el procecso de importacion
+    # Utilizamos una sola sesion de neo para el proceso de importacion
     with neo.session() as neo_session:
         # Cargamos centro en las db
         neo.create_article(center_node.id, center_node.title, center_page.categories)
@@ -73,6 +67,8 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
 
         title_dist_dict[center_page.title] = 0
         node_q.append(center_node)
+
+        total_nodes_imported: int = 0
 
         # Logging variables
         ring_count: int = 0
@@ -161,12 +157,14 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                     # Pongo el nuevo nodo en las estructuras
                     title_dist_dict[page.title] = current_dist + 1
                     node_q.append(ImportArticleNode(pageid, page.title, page.links))
+                    total_nodes_imported += 1
 
                     current_node_count += 1
                     print(f'({current_node.title})-->({page.title}). Current Ring: {ring_count}. Current Node in Ring: {current_ring_count}. Current relationship: {current_node_count}. Total: {current_node_count}')
 
-    neo.close()
+    return total_nodes_imported
 
 
+# Para testear
 if __name__ == '__main__':
-    main()
+    import_wiki("Titanic (1997 film)", 3, ['English-language films'])

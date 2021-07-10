@@ -4,19 +4,26 @@ import neo4j
 from neo4j import GraphDatabase, Session, Result, ResultSummary
 from neo4j.exceptions import ClientError
 
+_INDEX_ALREADY_EXISTS_CODE: str = 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists'
+
 class Neo4jRepository:
 
     @staticmethod
-    def _create_id_constraint(tx):
+    def _create_id_constraint(tx) -> None:
         id_result: Result = tx.run('CREATE CONSTRAINT article_unique_id ON (a:Article) ASSERT a.article_id IS UNIQUE')
         id_result.consume()
 
     @staticmethod
-    def _create_name_constraint(tx):
+    def _create_name_constraint(tx) -> None:
         name_result: Result = tx.run('CREATE CONSTRAINT article_unique_name ON (a:Article) ASSERT a.article_name IS UNIQUE')
         name_result.consume()
 
-    def __init__(self, ip: str, port: str, user: str, password: str, database: Optional[str] = None) -> None:
+    @staticmethod
+    def _truncate_db(tx) -> None:
+        name_result: Result = tx.run('MATCH (n)-[r]-(m) DELETE n, r')
+        name_result.consume()
+
+    def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str], database: Optional[str] = None) -> None:
         auth: Optional[Tuple[str, str]] = (user, password) if user and password else None
 
         self.driver = GraphDatabase.driver(f"neo4j://{ip}:{port}", auth=auth)
@@ -29,15 +36,18 @@ class Neo4jRepository:
             try:
                 session.write_transaction(self._create_id_constraint)
             except ClientError as e:
-                if e.code != 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists':
+                if e.code != _INDEX_ALREADY_EXISTS_CODE:
                     raise e
 
             # name constraint
             try:
                 session.write_transaction(self._create_name_constraint)
             except ClientError as e:
-                if e.code != 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists':
+                if e.code != _INDEX_ALREADY_EXISTS_CODE:
                     raise e
+
+            # Trunco la db seleccionada
+            session.write_transaction(self._truncate_db)
 
     def session(self) -> Session:
         return self.driver.session(database=self.db)
@@ -119,31 +129,6 @@ class Neo4jRepository:
 
         if result.consume().counters.relationships_created == 0:
             raise Neo4jWriteException(f'Tried to create duplicated relationship from node {source_id} to node `{dest_title}`')
-
-    def create_relationships(self, id: int, related_articles: List[int]):
-        """
-        Parameters:
-        id - Wikipedia's article id.
-        related_articles - List of article ids that are linked to the main article
-        """
-        with self.session() as session:
-            session.write_transaction(self._create_article_relationships, id, related_articles)
-    
-    @staticmethod
-    def _create_article_relationships(tx, id: int, related_articles: List[int]):
-        for i in range(len(related_articles)):
-            tx.run(
-                "MATCH (a:Article), (b:Article) WHERE a.article_id = $a_id AND b.article_id = $b_id "
-                "CREATE (a)-[r:LINKS]->(b)",
-                a_id=id, b_id=related_articles[i]
-            )
-
-# if __name__ == "__main__":
-#     neo = Neo4jWrapper("localhost", 7687, "neo4j", "password")
-#     neo.create_article(5, "byebye world", ["byebye", "world"])
-#     neo.create_article(22, "chao mundo", ["chao", "mundo", "world"])
-#     neo.create_relationships(22, [12, 5])
-#     neo.close()
 
 # Custom Exceptions
 class Neo4jWriteException(Exception):

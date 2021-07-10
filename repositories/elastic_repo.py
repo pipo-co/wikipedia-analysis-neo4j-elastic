@@ -17,20 +17,27 @@ class ElasticArticle(Document):
 
 class ElasticRepository:
 
-    def __init__(self, ip: str = 'localhost', port: str = '9200', user: Optional[str] = None, password: Optional[str] = None, index: str = 'wikipedia') -> None:
-        if user and password:
-            connections.create_connection(hosts=[f'{ip}:{port}'], http_auth=f'{user}:{password}')
-        else:
-            connections.create_connection(hosts=[f'{ip}:{port}'])
+    __repo_counter: int = 0
 
-        self.index: Index = Index(index)
-        self.index.document(ElasticArticle)
+    def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str], index: str) -> None:
+        self.__repo_counter += 1
+        self.repo_id: str = f'wiki_es_{self.__repo_counter}'
+
+        auth: str = f'{user}:{password}' if user and password else None
+        # Crea una conexion global con el nombre 'repo_id'
+        connections.create_connection(self.repo_id, hosts=[f'{ip}:{port}'], http_auth=auth)
+
+        index: Index = Index(index, using=self.repo_id)
+        index.document(ElasticArticle)
 
         # Si el indice ya existe, lo borramos
-        self.index.delete(ignore=[400, 404])
+        index.delete(ignore=[400, 404])
 
         # Creamos el indice
-        self.index.create()
+        index.create()
+
+    def close(self) -> None:
+        connections.remove_connection(self.repo_id)
 
     def create_article(self, id: int, title: str, content: str, categories: List[str]) -> ElasticArticle:
         article: ElasticArticle = ElasticArticle(article_id=id, title=title, content=content, categories=categories)
