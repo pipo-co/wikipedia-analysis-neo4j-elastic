@@ -6,8 +6,10 @@ from typing import Optional, Dict, Deque, List, Iterator, Any, Tuple
 
 from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
 
-from dependencies.databases import es, neo
+import dependencies.databases
 from models import ImportArticleNode
+from repositories.elastic_repo import ElasticRepository
+from repositories.neo4j_repo import Neo4jRepository
 
 INVALID_LINK: int = -1
 MAX_CATEGORIES: int = 49
@@ -50,6 +52,8 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
     categories = ['Category:' + cat for cat in categories]
 
     wikipedia: MediaWiki = MediaWiki(lang=lang, user_agent=WIKIPEDIA_USER_AGENT)
+    es: ElasticRepository = dependencies.databases.es_instance()
+    neo: Neo4jRepository = dependencies.databases.neo_instance()
 
     # Utilizamos cola pues BFS
     node_q: Deque[ImportArticleNode] = deque()
@@ -62,6 +66,10 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
 
     # Utilizamos una sola sesion de neo para el proceso de importacion
     with neo.session() as neo_session:
+        # Truncamos las bases antes del import
+        neo.truncate_db(neo_session)
+        es.truncate_db()
+
         # Cargamos centro en las db
         neo.create_article(center_node.id, center_node.title, center_page.categories)
         es.create_article(center_node.id, center_node.title, center_page.content, center_page.categories)

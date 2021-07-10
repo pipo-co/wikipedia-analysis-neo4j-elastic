@@ -3,8 +3,13 @@ from typing import Optional
 from repositories.elastic_repo import ElasticRepository
 from repositories.neo4j_repo import Neo4jRepository
 
-es: ElasticRepository = None
+es: ElasticRepository
 _es_open: bool = False
+
+def es_instance() -> ElasticRepository:
+    if not _neo_open:
+        raise Exception('ElasticSearch instance not available')
+    return es
 
 def es_open(ip: str, port: int, user: Optional[str], password: Optional[str], index: str) -> None:
     global es, _es_open
@@ -18,8 +23,13 @@ def es_close() -> None:
         _es_open = False
 
 
-neo: Neo4jRepository = None
+neo: Neo4jRepository
 _neo_open: bool = False
+
+def neo_instance() -> Neo4jRepository:
+    if not _neo_open:
+        raise Exception('Neo instance not available')
+    return neo
 
 def neo_open(ip: str, port: int, user: Optional[str], password: Optional[str], index: str) -> None:
     global neo, _neo_open
