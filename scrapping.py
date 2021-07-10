@@ -1,9 +1,8 @@
-import cProfile
 import concurrent.futures
 import itertools
 import pstats
 from collections import deque
-from typing import Optional, Dict, Deque, List
+from typing import Optional, Dict, Deque, List, Iterator, Any, Tuple
 
 from elasticsearch import Elasticsearch
 from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
@@ -11,110 +10,155 @@ from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
 from models import ImportArticleNode
 from neo4j_repo import Neo4jRepository
 
+INVALID_LINK: int = -1
+MAX_CATEGORIES: int = 49
+MAX_LINKS_PER_CATEGORY_FILTER_REQ: int = 49  # Un changui
+
+# Filtra links invalidos
+def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories: List[str], executor: concurrent.futures.ThreadPoolExecutor) -> Tuple[List[str], List[concurrent.futures.Future]]:
+    params: Dict[str, Any] = {
+        'action': 'query',
+        'prop': 'categories',
+        'redirects': True,
+        'format': 'json',
+        'cllimit': 1,                           # Cantidad de categorias maximas. Con una alcanza
+        'titles': '|'.join(links),              # Paginas a buscar
+        'clcategories': '|'.join(categories)    # Categorias que debe tener la pagina (alguna de ellas)
+    }
+    response: Dict[str, Any] = wikipedia.wiki_request(params)
+    pages: List[Dict[str, Any]] = response['query']['pages'].values()
+
+    invalid_links: List[str] = []
+    link_request_futures: List[concurrent.futures.Future] = []
+
+    for page in pages:
+        # Si posee alguna de las categorias, es un link valido. Preparamos el pedido de resolucion.
+        # Sino, es un link invalido. Preparamos para que se agregue al diccionario
+        # Aprovechamos para filtrar paginas invalidas por otras razones (id = 0)
+        if 'categories' in page and page['pageid'] != 0:
+            link_request_futures.append(executor.submit(wikipedia.page, page['title'], auto_suggest=False))
+        else:
+            invalid_links.append(page['title'])
+
+    return invalid_links, link_request_futures
 
 def main():
-    import_wiki("Python (programming language)", 2)
+    import_wiki("Python (programming language)", 3, ['Class-based programming languages', 'Object-oriented programming languages'])
 
-    # def import_wiki2(center_title: str, radius: int, first_n_links: int, lang: Optional[str] = None, categories: Optional[List[str]] = None) -> None:
-    #     center_page: WikipediaPage = wikipedia.page(center_title, auto_suggest=False)
-    #     total = 0
-    #     for link in center_page.links:
-    #         page = wikipedia.page(link, auto_suggest=False)
-    #         page.content
-    #         print(link, total)
-    #         total += 1
+def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> None:
+    if len(categories) > MAX_CATEGORIES or len(categories) == 0:
+        raise ValueError(f'Max filtering categories on import is {MAX_CATEGORIES}')
+    # Normalizo las categorias
+    categories = ['Category:' + cat for cat in categories]
 
-def import_wiki(center_title: str, radius: int, lang: str = 'en', categories: Optional[List[str]] = None) -> None:
-    wikipedia = MediaWiki(lang=lang, user_agent='neo_elastic_scraper; tbrandy@itba.edu.ar')
+    wikipedia: MediaWiki = MediaWiki(lang=lang, user_agent='neo_elastic_scraper; tbrandy@itba.edu.ar')
 
     # es = Elasticsearch(HOST=elastic_parameters["ip"], PORT=elastic_parameters["port"])
     neo = Neo4jRepository('localhost', '7687', "neo4j", "tobias")
 
     # Utilizamos cola pues BFS
     node_q: Deque[ImportArticleNode] = deque()
-    # La distancia al centro de cada nodo. -1 significa que es un nodo invalido.
+    # La distancia al centro de cada nodo. INVALID_LINK significa que es un nodo invalido.
     title_dist_dict: Dict[str, int] = {}
 
+    # Buscamos y creamos nodo centro
     center_page: MediaWikiPage = wikipedia.page(center_title, auto_suggest=False)
     center_node: ImportArticleNode = ImportArticleNode(int(center_page.pageid), center_page.title, center_page.links)
 
+    # Utilizamos una sola sesion de neo para el procecso de importacion
     with neo.session() as neo_session:
         neo.create_article(center_node.id, center_node.title, center_page.categories)
 
         title_dist_dict[center_page.title] = 0
         node_q.append(center_node)
 
-        resolved_count: int = 0
+        # Logging variables
+        ring_count: int = 0
+        current_ring_count: int = 0
+        current_node_count: int = 0
+        total: int = 0
 
         # Recorrido BFS para poder saber la distancia al centro de cada nodo
         while node_q:
             current_node: ImportArticleNode = node_q.popleft()
-            current_dist: int = title_dist_dict[current_node.title]
+            current_dist: int = title_dist_dict[current_node.title]  # Distancia del nodo al centro
+
+            # Logging
+            current_node_count = 0
+            if ring_count < current_dist:
+                ring_count = current_dist
+                current_ring_count = 0
 
             with concurrent.futures.ThreadPoolExecutor(32) as executor:
-                futures: List[concurrent.futures.Future] = []
 
-                scheduled_count: int = 0
-
-                # for link in itertools.islice(current_node.links, first_n_links):
+                # Calculamos que links ya resolvimos y creamos, y cuales necesitamos resolver/crear
+                links_needing_request: List[str] = []
                 for link in current_node.links:
                     dist: Optional[int] = title_dist_dict.get(link, None)
 
-                    # Si todavia no lo vi, lo creo
+                    # Si no esta en el mapa, todavia no calculamos este link. Hay que calcularlo y guardarlo.
                     if dist is None:
-                        # Scheduleamos para ejecutar asincronicamente el pedido a wikipedia
-                        futures.append(executor.submit(wikipedia.page, link, auto_suggest=False))
+                        # Si el nodo anterior estaba al borde del grafo, entonces no hay que crear nada, pues sino nos pasamos del radio
+                        if current_dist < radius:
+                            links_needing_request.append(link)
 
-                        scheduled_count += 1
-                        print(f'Scheduled {link}. Total: {scheduled_count}')
-
-                    # El nodo ya existia -> solo creo la relacion y listo
                     else:
-                        if dist != -1:
+                        # El nodo ya existia -> solo creo la relacion y listo. No queremos links invalidos ni autoreferencias
+                        if dist != INVALID_LINK and current_node.title != link:
                             neo.link_article(current_node.id, link, neo_session)
 
-                for future in concurrent.futures.as_completed(futures):
-                    # Se termino de completar el request -> Intentamos crear el nodo
+                # Preparamos los request para filtrar los links por categoria (y invalidos)
+                link_filter_request_futures: List[concurrent.futures.Future] = []
+                for i in range(0, len(links_needing_request), MAX_LINKS_PER_CATEGORY_FILTER_REQ):
+                    # Puedo preguntar como maximo por MAX_LINKS_PER_CATEGORY_FILTER_REQ links en un mismo request
+                    link_filter_request_futures.append(
+                        executor.submit(_link_filter_request, wikipedia, itertools.islice(links_needing_request, i, i + MAX_LINKS_PER_CATEGORY_FILTER_REQ), categories, executor)
+                    )
+
+                print('Link filter request scheduled!')
+
+                # Ejecutamos los request de filtrado y preparamos a partir de ellos los request de resolucion de links validos
+                links_resolution_futures: List[concurrent.futures.Future] = []
+                for future in concurrent.futures.as_completed(link_filter_request_futures):
+                    invalid_links: List[str]
+                    partial_links_resolution_futures: List[concurrent.futures.Future]
+                    invalid_links, partial_links_resolution_futures = future.result()
+
+                    # Guardamos los links invalidos en el dict
+                    for link in invalid_links:
+                        title_dist_dict[link] = INVALID_LINK
+
+                    links_resolution_futures.extend(partial_links_resolution_futures)
+
+                print('Link filter request and resolution scheduling done!')
+
+                # Ejecutamos los request de resolcuion de links validos (al fin!)
+                for future in concurrent.futures.as_completed(links_resolution_futures):
                     try:
                         page: MediaWikiPage = future.result()
                     except (PageError, DisambiguationError) as e:
+                        # Link no encontrado -> Informamos y se current_node_count: int = 0guimos adelante
                         print(f'Couldn\'t find link {e.title} - Ignoring page from now on')
-                        title_dist_dict[e.title] = -1
+                        title_dist_dict[e.title] = INVALID_LINK
                         continue
 
+                    # pageid viene como str!
                     pageid: int = int(page.pageid)
 
                     if page.title in title_dist_dict:
-                        # No deberia haberse ejecutado el futuro ???
+                        # Si esta en el dict, entonces ya lo habiamos calculado, no deberiamos estar aca. No deberia pasar, pero pasa (???
                         continue
 
-                    if pageid == 0:
-                        print('wat')
+                    # Creo nodo y relacion en neo
+                    if not neo.create_and_link_article(current_node.id, pageid, page.title, page.categories, neo_session):
+                        raise Exception('Un nodo que pense que tenia que crear, ya esta creado')
 
-                    # Para crearlo se debe cumplir que:
-                    # 1. current_dist < radius porque sino estariamos creando un nodo en radio + 1
-                    # 2. De haberse especificado categorias, alguna de ellas debe estar en page
-                    # 3. Id 0 es invalido
-                    if (
-                        current_dist < radius and
-                        (categories is None or any(cat in page.categories for cat in categories)) and
-                        pageid != 0
-                    ):
-                        # Creo nodo y relacion en neo
-                        if not neo.create_and_link_article(current_node.id, pageid, page.title, page.categories, neo_session):
-                            raise Exception('Un nodo que pense que tenia que crear, ya esta creado')
+                    # Pongo el nuevo nodo en las estructuras
+                    title_dist_dict[page.title] = current_dist + 1
+                    node_q.append(ImportArticleNode(pageid, page.title, page.links))
 
-                        # Pongo el nuevo nodo en las estructuras
-                        title_dist_dict[page.title] = current_dist + 1
-                        node_q.append(ImportArticleNode(pageid, page.title, page.links))
-
-                    # Si no cumple, lo agrego con dist -1 para no volver a calcularlo
-                    else:
-                        title_dist_dict[link] = -1
-                        continue
-
-                    resolved_count += 1
-                    print(f'({current_node.title})---({page.title}). Total: {resolved_count}')
+                    current_node_count += 1
+                    print(f'({current_node.title})-->({page.title}). Current Ring: {ring_count}. Current Node in Ring: {current_ring_count}. Current relationship: {current_node_count}. Total: {current_node_count}')
 
     neo.close()
 
