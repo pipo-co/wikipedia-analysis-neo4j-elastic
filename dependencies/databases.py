@@ -7,7 +7,7 @@ es: ElasticRepository
 _es_open: bool = False
 
 def es_instance() -> ElasticRepository:
-    if not _neo_open:
+    if not _es_open:
         raise Exception('ElasticSearch instance not available')
     return es
 
