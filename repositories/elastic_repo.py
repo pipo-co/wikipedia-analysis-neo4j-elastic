@@ -14,7 +14,7 @@ class ElasticArticle(Document):
     article_id: int = Keyword()
     title: str = Text()
     content: str = Text(analyzer=_content_analyzer)
-    categories: str = Text()
+    categories: str = Keyword()
 
 class ElasticRepository:
 
@@ -45,8 +45,8 @@ class ElasticRepository:
         article.save()
         return article
 
-    def strict_search_query(self, string: str, leaps: int) -> response:
-        s = Search()
-        s = s.query('query_string', **{'query': 'Python (programming language)', 'default_field': 'content'})
+    def strict_search_query(self, string: str) -> response:
+        s = Search(using=self.repo_id)
+        s = s.query('query_string', **{'query': string, 'default_field': 'content'})
         # s = s.query("query_string", query=string, fields=['content'])
         return s.execute()

@@ -17,7 +17,7 @@ class Neo4jRepository:
 
     @staticmethod
     def _create_name_constraint(tx) -> None:
-        name_result: Result = tx.run('CREATE CONSTRAINT article_unique_name ON (a:Article) ASSERT a.article_name IS UNIQUE')
+        name_result: Result = tx.run('CREATE CONSTRAINT article_unique_title ON (a:Article) ASSERT a.title IS UNIQUE')
         name_result.consume()
 
     def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str], database: Optional[str] = None) -> None:
@@ -77,7 +77,7 @@ class Neo4jRepository:
     @staticmethod
     def _create_article_node(tx, id: int, title: str, categories: List[str]) -> bool:
         result: Result = tx.run(
-            "MERGE (a:Article {article_id: $id, title: $title, categories:$categories})",
+            "MERGE (a:Article {article_id: $id, title: $title, categories: $categories})",
             id=id, title=title, categories=categories
         )
 
@@ -145,7 +145,7 @@ class Neo4jRepository:
         result = tx.run(
             "MATCH (center:Article {title: $center_title}), (exterior:Article {title: $ext_title}), "
             "p = shortestPath((center)-[*1.."+str(leaps)+"]-(exterior)) "
-            "match (exterior)-[r]->(m) "
+            "match (exterior)-[]->(m) "
             "return {article_id: exterior.article_id, title: exterior.title, categories: exterior.categories, " 
             "links: collect({article_id: m.article_id, title: m.title})}",
             center_title=center, ext_title=string
@@ -153,8 +153,7 @@ class Neo4jRepository:
         return result.single()
 
 def mapper(record: Record) -> ArticleNode:
-        return ArticleNode(id=record['article_id'], title=record['title'], 
-                        categories=record['categories'], links=record['links'])
+    return ArticleNode(id=record['article_id'], title=record['title'], categories=record['categories'], links=record['links'])
 
 # Custom Exceptions
 class Neo4jWriteException(Exception):
