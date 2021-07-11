@@ -1,12 +1,13 @@
 import concurrent.futures
-from dataclasses import asdict
 import itertools
 from collections import deque
+import time
 from typing import Optional, Dict, Deque, List, Iterator, Any, Tuple
 
 from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
 
 import dependencies.databases
+from dependencies.settings import settings
 from models import ImportArticleNode
 from repositories.elastic_repo import ElasticRepository
 from repositories.neo4j_repo import Neo4jRepository
@@ -38,7 +39,7 @@ def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories:
         # Sino, es un link invalido. Preparamos para que se agregue al diccionario
         # Aprovechamos para filtrar paginas invalidas por otras razones (id = 0)
         if 'categories' in page and page['pageid'] != 0:
-            link_request_futures.append(executor.submit(wikipedia.page, page['title'], auto_suggest=False))
+            link_request_futures.append(executor.submit(wikipedia.page, page['title'], auto_suggest=False, preload=True))
         else:
             invalid_links.append(page['title'])
 
@@ -47,6 +48,8 @@ def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories:
 def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> int:
     if len(categories) > MAX_CATEGORIES or len(categories) == 0:
         raise ValueError(f'Max filtering categories on import is {MAX_CATEGORIES}')
+
+    start_time = time.time()
 
     # Normalizo las categorias
     categories = ['Category:' + cat for cat in categories]
@@ -61,7 +64,7 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
     title_dist_dict: Dict[str, int] = {}
 
     # Buscamos y creamos nodo centro
-    center_page: MediaWikiPage = wikipedia.page(center_title, auto_suggest=False)
+    center_page: MediaWikiPage = wikipedia.page(center_title, auto_suggest=False, preload=True)
     center_node: ImportArticleNode = ImportArticleNode(int(center_page.pageid), center_page.title, center_page.links)
 
     # Utilizamos una sola sesion de neo para el proceso de importacion
@@ -77,13 +80,11 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
         title_dist_dict[center_page.title] = 0
         node_q.append(center_node)
 
-        total_nodes_imported: int = 0
-
         # Logging variables
         ring_count: int = 0
         current_ring_count: int = 0
-        current_node_count: int = 0
-        total: int = 0
+        current_node_count: int
+        total_nodes_imported: int = 0
 
         # Recorrido BFS para poder saber la distancia al centro de cada nodo
         while node_q:
@@ -95,8 +96,10 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
             if ring_count < current_dist:
                 ring_count = current_dist
                 current_ring_count = 0
+            else:
+                current_ring_count += 1
 
-            with concurrent.futures.ThreadPoolExecutor(32) as executor:
+            with concurrent.futures.ThreadPoolExecutor() as executor:
 
                 # Calculamos que links ya resolvimos y creamos, y cuales necesitamos resolver/crear
                 links_needing_request: List[str] = []
@@ -122,8 +125,6 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                         executor.submit(_link_filter_request, wikipedia, itertools.islice(links_needing_request, i, i + MAX_LINKS_PER_CATEGORY_FILTER_REQ), categories, executor)
                     )
 
-                print('Link filter request scheduled!')
-
                 # Ejecutamos los request de filtrado y preparamos a partir de ellos los request de resolucion de links validos
                 links_resolution_futures: List[concurrent.futures.Future] = []
                 for future in concurrent.futures.as_completed(link_filter_request_futures):
@@ -136,8 +137,6 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                         title_dist_dict[link] = INVALID_LINK
 
                     links_resolution_futures.extend(partial_links_resolution_futures)
-
-                print('Link filter request and resolution scheduling done!')
 
                 # Ejecutamos los request de resolcuion de links validos (al fin!)
                 for future in concurrent.futures.as_completed(links_resolution_futures):
@@ -166,13 +165,19 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                     # Pongo el nuevo nodo en las estructuras
                     title_dist_dict[page.title] = current_dist + 1
                     node_q.append(ImportArticleNode(pageid, page.title, page.links))
+
                     total_nodes_imported += 1
-
                     current_node_count += 1
-                    print(f'({current_node.title})-->({page.title}). Current Ring: {ring_count}. Current Node in Ring: {current_ring_count}. Current relationship: {current_node_count}. Total: {current_node_count}')
+                    print(f'({current_node.title})-->({page.title}). Current Ring: {ring_count}. Current Node in Ring: {current_ring_count}. Current relationship: {current_node_count}. Total: {total_nodes_imported}')
 
+    print(f'Total time elapsed: {time.time() - start_time}')
     return total_nodes_imported
 
 # Para testear
 if __name__ == '__main__':
+    dependencies.databases.neo_open(settings.wiki_neo_ip, settings.wiki_neo_port, settings.wiki_neo_user, settings.wiki_neo_pass, settings.wiki_neo_db)
+    dependencies.databases.es_open(settings.wiki_es_ip, settings.wiki_es_port, settings.wiki_es_user, settings.wiki_es_pass, settings.wiki_es_db)
+
     import_wiki("Titanic (1997 film)", 3, ['English-language films'])
+
+    dependencies.databases.close_all()
