@@ -1,8 +1,10 @@
-from typing import Optional, List
+from typing import Optional, List, Dict, Any, Iterator
 
-from elasticsearch_dsl import Index, Document, Text, Keyword, Search, Q, response, analyzer
+from elasticsearch_dsl import Index, Document, Text, Keyword, Search, Q, response, analyzer, AttrList
 from elasticsearch_dsl.connections import connections
-from six import string_types
+from elasticsearch_dsl.response import Response
+
+from models import ElasticFilter, BoolOp, TextSearchField
 
 _content_analyzer = analyzer(
     'folding_analyzer',
@@ -44,6 +46,35 @@ class ElasticRepository:
         article: ElasticArticle = ElasticArticle(article_id=id, title=title, content=content, categories=categories)
         article.save()
         return article
+
+    def search(self, filters: List[ElasticFilter]) -> Iterator[int]:
+        must: List[Q] = []
+        should: List[Q] = []
+
+        for filter in filters:
+            op: List[Q] = must if filter.bool_op == BoolOp.AND else should
+            field: str = 'title' if filter.field == TextSearchField.TITLE else 'content'  # todo mejorar
+
+            for match in filter.matches:
+                is_phrase: bool = True if ' ' in match else False
+
+                query_type: str = 'match_phrase' if is_phrase else 'match'
+                query_params: Dict[str, Any] = {field: {'query': match}}
+                if not is_phrase and filter.fuzzy:
+                    query_params[field]['fuzziness'] = 2  # Solo se puede aplicar fuzzy si no es una frase
+
+                op.append(Q(query_type, **query_params))
+
+        resp: Response = Search(using=self.repo_id)\
+            .query('bool', must=must, should=should)\
+            .source(include=['article_id'])\
+            .execute()
+
+        if not resp.success():
+            raise Exception('Elastic search failed')
+
+        return map(lambda hit: hit.article_id, resp.hits)
+
 
     def strict_search_query(self, string: str) -> response:
         s = Search(using=self.repo_id)
