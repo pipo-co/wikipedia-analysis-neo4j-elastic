@@ -17,31 +17,32 @@ class ArticleNode(BaseModel):
     links: List[Dict[str, Any]]
 
 # Return Types
-class QueryReturnTypes(Enum):
-    COUNT = auto()
-    TITLE = auto()
-    ID = auto()
-    NODE = auto()
-    NODE_WITH_CONTENT = auto()
+class QueryReturnTypes(str, Enum):
+    COUNT = 'COUNT'
+    TITLE = 'TITLE'
+    ID = 'ID'
+    NODE = 'NODE'
+    NODE_WITH_CONTENT = 'NODE_WITH_CONTENT'
 
 # Elastic Filters
-class TextSearchFields(Enum):
-    TITLE = 'title'
-    CONTENT = 'content'
+class TextSearchField(str, Enum):
+    TITLE = 'TITLE'
+    CONTENT = 'CONTENT'
 
-class TextSearchStrategy(Enum):
-    EXACT = auto()
-    FUZZY = auto()
+class BoolOp(str, Enum):
+    OR = 'OR'
+    AND = 'AND'
 
 class ElasticTextSearchFilter(BaseModel):
-    field: TextSearchFields
-    strategy: TextSearchStrategy
-    match: str
+    field: TextSearchField
+    fuzzy: bool = False
+    bool_op: BoolOp = BoolOp.AND
+    matches: List[str]
 
 # Node Filters
-class DistanceFilterStrategy(Enum):
-    AT_DIST = auto()
-    UP_TO_DIST = auto()
+class DistanceFilterStrategy(str, Enum):
+    AT_DIST = 'AT_DIST'
+    UP_TO_DIST = 'UP_TO_DIST'
 
 class NeoDistanceFilter(BaseModel):
     source_node: str
@@ -64,14 +65,15 @@ class CategoriesFilter(BaseModel):
     categories: List[str]
 
 # Sort Fields
-class SortByEnum(Enum):
-    ID = auto()
-    TITLE = auto()
-    LINK_COUNT = auto()
+class SortByEnum(str, Enum):
+    ID = 'ID'
+    TITLE = 'TITLE'
+    LINK_COUNT = 'LINK_COUNT'
+    # elastic score ??
 
-class SortType(Enum):
-    ASC = auto()
-    DESC = auto()
+class SortType(str, Enum):
+    ASC = 'ASC'
+    DESC = 'DESC'
 
 class QuerySort(BaseModel):
     sort_by: SortByEnum
@@ -84,10 +86,10 @@ NeoFilter = Union[NeoDistanceFilter, NeoLinksFilter]
 
 # Primero se ejecuta elastic siempre - No hay ors
 class ArticleQuery(BaseModel):
-    return_type: QueryReturnTypes
-    elastic_filter: List[ElasticFilter]  # Hay diferencia entre == y contains?
-    neo_filter: List[NeoFilter]
-    general_filters: List[GeneralFilter]
+    return_type: QueryReturnTypes = QueryReturnTypes.NODE
+    elastic_filter: Optional[List[ElasticFilter]] = None
+    neo_filter: Optional[List[NeoFilter]] = None
+    general_filters: Optional[List[GeneralFilter]] = None
     sort: Optional[QuerySort] = None
-    limit: int  # Tambien se podria offset ??
-    offset: int
+    limit: Optional[int] = None
+    offset: Optional[int] = None
