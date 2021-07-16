@@ -1,34 +1,30 @@
 <!DOCTYPE html>
 <html>
   <head>
-    <title>Setup</title>
+    <title>Search</title>
     <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet">
     <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
     <link href="{{ url_for('static', path='/css/style.css') }}" rel="stylesheet">
-  </head>
+</head>
   <body>
     <div class="testbox">
       <form method="post">
         <div class="colums">
           <div class="item">
-            <label for="elastic_ip">Elasticsearch IP<span>*</span></label>
-            <input id="elastic_ip" type="text" name="elastic_ip" required/>
+            <label for="source">Center Document Name<span>*</span></label>
+            <input id="source" type="text" name="source" required/>
           </div>
           <div class="item">
-            <label for="elastic_port">Elasticsearch Port<span>*</span></label>
-            <input id="elastic_port" type="number" name="elastic_port" required/>
+            <label for="radius">Radius<span>*</span></label>
+            <input id="radius" type="text" name="radius" required/>
           </div>
           <div class="item">
-            <label for="neo_ip">Neo4J IP<span>*</span></label>
-            <input id="neo_ip" type="text" name="neo_ip" required/>
-          </div>
-          <div class="item">
-            <label for="neo_port">Neo4J Port<span>*</span></label>
-            <input id="neo_port" type="number" name="neo_port" required/>
+            <label for="string">String</label>
+            <input id="string" type="text" name="string" required/>
           </div>
         </div>
         <div class="btn-block">
-          <button type="submit">Submit</button>
+          <button type="submit">Search</button>
         </div>
       </form>
     </div>

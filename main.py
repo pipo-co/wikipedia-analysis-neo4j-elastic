@@ -3,7 +3,11 @@ from fastapi import FastAPI, Request, Form
 from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 import starlette.status as status
+import uvicorn
+import os, json
 
 from models import ArticleQuery
 from querys import strict_search_query, process_query
@@ -14,6 +18,11 @@ from wikipedia_import import import_wiki
 
 app = FastAPI()
 templates = Jinja2Templates(directory="templates/")
+app.mount(
+    "/static",
+    StaticFiles(directory=Path(__file__).parent.absolute() / "static"),
+    name="static",
+)
 
 @app.on_event("startup")
 def startup_event():
@@ -32,30 +41,61 @@ class WikipediaImportRequest(BaseModel):
     lang: str = Field('en', title='Idioma de Wikipedia', description='El idioma de la wikipedia a usar. Es opcional, defaultea a Ingles.')
 
 
-@app.post("/import")
+@app.post("/api/import")
 def wikipedia_import(import_request: WikipediaImportRequest):
     return import_wiki(import_request.center_page, import_request.radius, import_request.categories, import_request.lang)
 
-@app.get("/strict_search")
+@app.get("/api/strict_search")
 def strict_searc(source: str, string: str, leaps: int):
-    strict_search_query(source, string, leaps)
+    file = strict_search_query(source, string, leaps)
 
-@app.get("/search")
+    data ={
+        "nodes" : [],
+        "edges" : []
+    }
+
+    for node in file:
+        data["nodes"].append(node.__dict__)
+        data["edges"].extend([{"from": node.id, "to":link["article_id"]} for link in node.links])
+
+    for node in data["nodes"]:
+        del node['links']
+
+    file_name = os.getcwd()+"/static/json/data.json"
+    with open(file_name,'w') as f:
+        f.write(json.dumps(data, indent = 4))
+    
+    return file
+
+@app.get("/api/search")
 def search(query: ArticleQuery):
     return process_query(query)
 
-# @app.get("/")
-# def setup(request: Request):
-#     if elastic_parameters == {}:
-#         return RedirectResponse('/setup', status_code=status.HTTP_302_FOUND)
-#     if center == '':
-#         return RedirectResponse('/import-parameters', status_code=status.HTTP_302_FOUND)
-#
-#     return 'ok'
+@app.get("/")
+def search(request: Request):
+    return templates.TemplateResponse('importForm.html', context={'request': request})
+
+# @app.post("/")
+# async def search(request: Request, source: str = Form(...), radius: int = Form(...), string: Optional[str] = Form(None)):
+#     return templates.TemplateResponse('test.html', context={'request': request})
+
+# grafica la ultima query realizada, utiliza el archivo /static/json/data.json
+@app.get("/graph")
+def search(request: Request):
+    return templates.TemplateResponse('graph.html', context={'request': request})
 
 # @app.get("/setup")
 # def setup(request: Request):
 #     return templates.TemplateResponse('setupForm.html', context={'request': request})
+
+@app.get("/reset")
+async def search(request: Request):
+    databases.truncate_dbs()
+    return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
+
+# DEBUG
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
 
 # @app.post("/setup")
 # async def setup(request: Request, elastic_ip: str = Form(...), elastic_port: int = Form(...),
@@ -85,9 +125,9 @@ def search(query: ArticleQuery):
 #     lang = lang_param
 #     radius = radius_param
 #     category = category_param
-#
+
 #     wikipedia.set_lang(lang)
-#
+
 #     return RedirectResponse('/disambiguation', status_code=status.HTTP_302_FOUND)
 
 # @app.get("/test-elastic-post")

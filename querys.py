@@ -24,4 +24,6 @@ def strict_search_query(center: str, string: str, leaps: int) -> List[ArticleNod
             if record is not None:
                 results.append(mapper(record[0]))
     
+    results.append(mapper(neo.get_connections(center)[0]))
+    
     return results

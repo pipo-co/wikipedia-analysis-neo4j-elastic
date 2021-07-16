@@ -152,6 +152,18 @@ class Neo4jRepository:
         )
         return result.single()
 
+    def get_connections(self, node_title: str) -> Record:
+        with self.session() as session:
+            return session.write_transaction(self._get_connections, node_title)
+    
+    @staticmethod
+    def _get_connections(tx, node_title: str) -> Record:
+        result = tx.run(
+            'match (n:Article {title: $title})-[r]-(m) return {article_id: n.article_id, title: n.title, categories: n.categories, links: collect({article_id: m.article_id, title: m.title})}',
+            title=node_title
+        )
+        return result.single()
+
 def mapper(record: Record) -> ArticleNode:
     return ArticleNode(id=record['article_id'], title=record['title'], categories=record['categories'], links=record['links'])
 

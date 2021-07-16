@@ -45,3 +45,10 @@ def neo_close() -> None:
 def close_all() -> None:
     es_close()
     neo_close()
+
+def truncate_dbs() -> None:
+    global _es_open, _neo_open
+    if _es_open:
+        es.truncate_db()
+    if _neo_open:
+        neo.truncate_db()

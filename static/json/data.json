@@ -1,0 +1,316 @@
+{
+    "nodes": [
+        {
+            "id": 28319,
+            "title": "Smalltalk",
+            "categories": [
+                "1972 software",
+                "Class-based programming languages",
+                "Cross-platform free software",
+                "Dynamically typed programming languages",
+                "Free compilers and interpreters",
+                "Free educational software",
+                "Object-oriented programming languages",
+                "Programming languages",
+                "Programming languages created by women",
+                "Programming languages created in 1972",
+                "Smalltalk programming language family"
+            ]
+        },
+        {
+            "id": 39809523,
+            "title": "Objective-C",
+            "categories": [
+                "C programming language family",
+                "Class-based programming languages",
+                "Dynamically typed programming languages",
+                "GNUstep",
+                "NeXT",
+                "Object-oriented programming languages",
+                "Objective-C",
+                "Programming languages created in 1986"
+            ]
+        },
+        {
+            "id": 25768,
+            "title": "Ruby (programming language)",
+            "categories": [
+                "Class-based programming languages",
+                "Dynamic programming languages",
+                "Dynamically typed programming languages",
+                "Free compilers and interpreters",
+                "Free software programmed in C",
+                "ISO standards",
+                "Multi-paradigm programming languages",
+                "Object-oriented programming languages",
+                "Programming languages created in 1995",
+                "Programming languages with an ISO standard",
+                "Ruby (programming language)",
+                "Scripting languages",
+                "Software using the BSD license",
+                "Text-oriented programming languages"
+            ]
+        },
+        {
+            "id": 9838,
+            "title": "Eiffel (programming language)",
+            "categories": [
+                "Class-based programming languages",
+                "Formal specification languages",
+                "High Integrity Programming Language",
+                "Object-oriented programming",
+                "Object-oriented programming languages",
+                "Programming languages created in 1986",
+                "Programming languages with an ISO standard"
+            ]
+        },
+        {
+            "id": 6799,
+            "title": "COBOL",
+            "categories": [
+                ".NET programming languages",
+                "1959 software",
+                "COBOL",
+                "Class-based programming languages",
+                "Computer-related introductions in 1959",
+                "Cross-platform software",
+                "Object-oriented programming languages",
+                "Procedural programming languages",
+                "Programming languages created by women",
+                "Programming languages created in 1959",
+                "Programming languages with an ISO standard",
+                "Statically typed programming languages",
+                "Structured programming languages"
+            ]
+        },
+        {
+            "id": 23862,
+            "title": "Python (programming language)",
+            "categories": [
+                "Class-based programming languages",
+                "Computational notebook",
+                "Computer science in the Netherlands",
+                "Cross-platform free software",
+                "Cross-platform software",
+                "Dutch inventions",
+                "Dynamically typed programming languages",
+                "Educational programming languages",
+                "High-level programming languages",
+                "Information technology in the Netherlands",
+                "Multi-paradigm programming languages",
+                "Object-oriented programming languages",
+                "Programming languages",
+                "Programming languages created in 1991",
+                "Python (programming language)",
+                "Scripting languages",
+                "Text-oriented programming languages"
+            ]
+        }
+    ],
+    "edges": [
+        {
+            "from": 28319,
+            "to": 899874
+        },
+        {
+            "from": 28319,
+            "to": 25768
+        },
+        {
+            "from": 28319,
+            "to": 23862
+        },
+        {
+            "from": 28319,
+            "to": 24131
+        },
+        {
+            "from": 28319,
+            "to": 39809523
+        },
+        {
+            "from": 28319,
+            "to": 15881
+        },
+        {
+            "from": 28319,
+            "to": 6799
+        },
+        {
+            "from": 39809523,
+            "to": 28319
+        },
+        {
+            "from": 39809523,
+            "to": 25768
+        },
+        {
+            "from": 39809523,
+            "to": 23862
+        },
+        {
+            "from": 39809523,
+            "to": 24131
+        },
+        {
+            "from": 39809523,
+            "to": 15881
+        },
+        {
+            "from": 39809523,
+            "to": 243881
+        },
+        {
+            "from": 39809523,
+            "to": 6799
+        },
+        {
+            "from": 25768,
+            "to": 519691
+        },
+        {
+            "from": 25768,
+            "to": 28319
+        },
+        {
+            "from": 25768,
+            "to": 23862
+        },
+        {
+            "from": 25768,
+            "to": 24131
+        },
+        {
+            "from": 25768,
+            "to": 39809523
+        },
+        {
+            "from": 25768,
+            "to": 15881
+        },
+        {
+            "from": 25768,
+            "to": 9838
+        },
+        {
+            "from": 25768,
+            "to": 243881
+        },
+        {
+            "from": 25768,
+            "to": 6799
+        },
+        {
+            "from": 9838,
+            "to": 28763
+        },
+        {
+            "from": 9838,
+            "to": 28319
+        },
+        {
+            "from": 9838,
+            "to": 25768
+        },
+        {
+            "from": 9838,
+            "to": 15881
+        },
+        {
+            "from": 9838,
+            "to": 243881
+        },
+        {
+            "from": 6799,
+            "to": 9838
+        },
+        {
+            "from": 6799,
+            "to": 28319
+        },
+        {
+            "from": 6799,
+            "to": 25768
+        },
+        {
+            "from": 6799,
+            "to": 23862
+        },
+        {
+            "from": 6799,
+            "to": 24131
+        },
+        {
+            "from": 6799,
+            "to": 15881
+        },
+        {
+            "from": 23862,
+            "to": 22496
+        },
+        {
+            "from": 23862,
+            "to": 24131
+        },
+        {
+            "from": 23862,
+            "to": 15881
+        },
+        {
+            "from": 23862,
+            "to": 6068
+        },
+        {
+            "from": 23862,
+            "to": 39809523
+        },
+        {
+            "from": 23862,
+            "to": 25768
+        },
+        {
+            "from": 23862,
+            "to": 28319
+        },
+        {
+            "from": 23862,
+            "to": 243881
+        },
+        {
+            "from": 23862,
+            "to": 6799
+        },
+        {
+            "from": 23862,
+            "to": 24131
+        },
+        {
+            "from": 23862,
+            "to": 15881
+        },
+        {
+            "from": 23862,
+            "to": 6068
+        },
+        {
+            "from": 23862,
+            "to": 39809523
+        },
+        {
+            "from": 23862,
+            "to": 25768
+        },
+        {
+            "from": 23862,
+            "to": 28319
+        },
+        {
+            "from": 23862,
+            "to": 243881
+        },
+        {
+            "from": 23862,
+            "to": 6799
+        }
+    ]
+}
