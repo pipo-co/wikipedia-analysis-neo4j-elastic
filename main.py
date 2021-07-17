@@ -46,7 +46,7 @@ def wikipedia_import(import_request: WikipediaImportRequest):
     return import_wiki(import_request.center_page, import_request.radius, import_request.categories, import_request.lang)
 
 @app.get("/api/strict_search")
-def strict_searc(source: str, string: str, leaps: int):
+def strict_search(source: str, string: str, leaps: int):
     file = strict_search_query(source, string, leaps)
 
     data ={
@@ -73,11 +73,12 @@ def search(query: ArticleQuery):
 
 @app.get("/")
 def search(request: Request):
-    return templates.TemplateResponse('importForm.html', context={'request': request})
+    return templates.TemplateResponse('search.html', context={'request': request})
 
-# @app.post("/")
-# async def search(request: Request, source: str = Form(...), radius: int = Form(...), string: Optional[str] = Form(None)):
-#     return templates.TemplateResponse('test.html', context={'request': request})
+@app.post("/")
+async def search(request: Request, source: str = Form(...), radius: int = Form(...), string: Optional[str] = Form(None)):
+    strict_search(source, string, radius)
+    return RedirectResponse('/graph', status_code=status.HTTP_302_FOUND)
 
 # grafica la ultima query realizada, utiliza el archivo /static/json/data.json
 @app.get("/graph")
@@ -91,6 +92,16 @@ def search(request: Request):
 @app.get("/reset")
 async def search(request: Request):
     databases.truncate_dbs()
+    return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
+
+@app.get("/import-parameters")
+def import_parameters(request: Request):
+    return templates.TemplateResponse('importForm.html', context={'request': request})
+
+@app.post("/import-parameters")
+async def import_parameters(request: Request, center_param: str = Form(...), lang_param: str = Form(...), radius_param: str = Form(...), categories_param: Optional[str] = Form(None)):
+    params = WikipediaImportRequest(center_page=center_param, radius=radius_param, lang=lang_param, categories=list(categories_param))
+    wikipedia_import(import_request=params)
     return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
 
 # DEBUG
@@ -112,23 +123,6 @@ if __name__ == "__main__":
 #     neo = Neo4jRepository(neo_parameters["ip"], neo_parameters["port"], "neo4j", "password")
 #
 #     return RedirectResponse('/import-parameters', status_code=status.HTTP_302_FOUND)
-
-# @app.get("/import-parameters")
-# def import_parameters(request: Request):
-#     result = ""
-#     return templates.TemplateResponse('importForm.html', context={'request': request})
-
-# @app.post("/import-parameters")
-# async def import_parameters(center_param: str = Form(...), lang_param: str = Form(...), radius_param: int = Form(...), category_param: Optional[str] = Form(None)):
-#     global center, lang, radius, category
-#     center = center_param
-#     lang = lang_param
-#     radius = radius_param
-#     category = category_param
-
-#     wikipedia.set_lang(lang)
-
-#     return RedirectResponse('/disambiguation', status_code=status.HTTP_302_FOUND)
 
 # @app.get("/test-elastic-post")
 # def elastic_test_post(request: Request):
