@@ -1,5 +1,6 @@
-from models import ArticleNode
-from typing import List, Optional, Tuple
+from abc import ABCMeta, abstractmethod
+from models import ArticleNode, DistanceFilterStrategy, GeneralFilter, QueryReturnTypes
+from typing import List, Optional, Tuple, final
 
 import neo4j
 from neo4j import GraphDatabase, Session, Result, ResultSummary
@@ -171,3 +172,75 @@ def mapper(record: Record) -> ArticleNode:
 class Neo4jWriteException(Exception):
     pass
 
+class Neo4jQuery:
+    query: str
+
+    def __init__(self, query: str):
+        self.query = query
+
+class Neo4jQueryBuilder(ABCMeta):
+    _baseBuilder: Optional['Neo4jQueryBuilder']
+
+    def __init__(self, base: 'Neo4jQueryBuilder') -> None:
+        self._baseBuilder = base
+
+    @abstractmethod
+    def stringify(self) -> str:
+        pass
+
+    @final
+    def _build(self) -> List[str]:
+        list = self._baseBuilder._build() if self._baseBuilder is not None else []
+        list.append(self.stringify())
+        return list
+
+    @final
+    def build(self) -> Neo4jQuery:
+        return Neo4jQuery('\n'.join(self._build()))
+
+class Neo4jFilterQuery(Neo4jQueryBuilder):
+    def generalFilter(self, filter: GeneralFilter):
+        return Neo4jGeneralFilter(self._baseBuilder, filter)
+
+    def distanceFilter(self, source: str, distance: int, strategy: DistanceFilterStrategy):
+        return Neo4jDistanceFilter(self._baseBuilder, source, distance, strategy)
+
+    def returnType(self, type: QueryReturnTypes):
+        if  type == QueryReturnTypes.COUNT or \
+            type == QueryReturnTypes.TITLE or \
+            type == QueryReturnTypes.ID:
+            return 
+
+class Neo4jDistanceFilter(Neo4jFilterQuery):
+    source_node: str
+    dist: int
+    strategy: DistanceFilterStrategy
+
+    def __init__(self, base: Neo4jQueryBuilder, source_node: str, dist: int, strategy: DistanceFilterStrategy) -> None:
+        super().__init__(base)
+        self.source_node = source_node
+        self.dist = dist
+        self.strategy = strategy
+
+    def stringify(self) -> str:
+        pass
+
+class Neo4jSimpleReturn(Neo4jQueryBuilder):
+    type : QueryReturnTypes
+
+    def __init__(self, base: Neo4jQueryBuilder, type: QueryReturnTypes) -> None:
+        super().__init__(base)
+        self.type = type
+
+    def stringify(self) -> str:
+        pass
+
+class Neo4jGeneralFilter(Neo4jFilterQuery):
+    filter: GeneralFilter
+
+    def __init__(self, base: Neo4jQueryBuilder, filter: GeneralFilter) -> None:
+        super().__init__(base)
+        self.filter = filter
+
+    def stringify(self) -> str:
+        pass
