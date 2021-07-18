@@ -1,6 +1,10 @@
 from abc import ABCMeta, abstractmethod
+import itertools
+
+from neo4j.work import result
+from neo4j.work.transaction import Transaction
 from models import ArticleNode, DistanceFilterStrategy, GeneralFilter, QueryReturnTypes
-from typing import List, Optional, Tuple, final
+from typing import Any, List, Optional, Tuple, final
 
 import neo4j
 from neo4j import GraphDatabase, Session, Result, ResultSummary
@@ -142,7 +146,7 @@ class Neo4jRepository:
             return session.write_transaction(self._radius_search, center, string, leaps)
     
     @staticmethod
-    def _radius_search(tx, center: str, string: str, leaps: int) -> Record:
+    def _radius_search(tx: Transaction, center: str, string: str, leaps: int) -> Record:
         result = tx.run(
             "MATCH (center:Article {title: $center_title}), (exterior:Article {title: $ext_title}), "
             "p = shortestPath((center)-[*1.."+str(leaps)+"]-(exterior)) "
@@ -153,12 +157,19 @@ class Neo4jRepository:
         )
         return result.single()
 
+    def buildQuery(self) -> 'Neo4jFilterQuery':
+        return Neo4jFilterQuery()
+
+    def executeQuery(self, query: 'Neo4jQuery') -> Result:
+        with self.session() as session:
+            return session.write_transaction(query.execute)
+
     def get_connections(self, node_title: str) -> Record:
         with self.session() as session:
             return session.write_transaction(self._get_connections, node_title)
     
     @staticmethod
-    def _get_connections(tx, node_title: str) -> Record:
+    def _get_connections(tx: Transaction, node_title: str) -> Record:
         result = tx.run(
             'match (n:Article {title: $title})-[r]-(m) return {article_id: n.article_id, title: n.title, categories: n.categories, links: collect({article_id: m.article_id, title: m.title})}',
             title=node_title
@@ -172,31 +183,41 @@ def mapper(record: Record) -> ArticleNode:
 class Neo4jWriteException(Exception):
     pass
 
+Neo4jQuerySegment = Tuple[str, dict[str, Any]]
+
 class Neo4jQuery:
     query: str
+    kwargs: dict[str, Any]
 
-    def __init__(self, query: str):
+    def __init__(self, query: str, args: dict[str, Any]):
+        self.kwargs = args
         self.query = query
 
-class Neo4jQueryBuilder(ABCMeta):
-    _baseBuilder: Optional['Neo4jQueryBuilder']
+    def execute(self, tx: Transaction) -> Result:
+        return tx.run(self.query, **self.kwargs)
 
-    def __init__(self, base: 'Neo4jQueryBuilder') -> None:
+class Neo4jQueryBuilder():
+    _baseBuilder: Optional['Neo4jQueryBuilder']
+    ident = 0
+
+    def __init__(self, base: 'Neo4jQueryBuilder' = None) -> None:
         self._baseBuilder = base
 
     @abstractmethod
-    def stringify(self) -> str:
+    def stringify(self) -> Neo4jQuerySegment:
         pass
 
     @final
-    def _build(self) -> List[str]:
+    def _build(self) -> List[Neo4jQuerySegment]:
         list = self._baseBuilder._build() if self._baseBuilder is not None else []
         list.append(self.stringify())
         return list
 
     @final
     def build(self) -> Neo4jQuery:
-        return Neo4jQuery('\n'.join(self._build()))
+        query, args = map(list, zip(*self._build()))
+        dic = dict(itertools.chain.from_iterable(d.items() for d in args))
+        return Neo4jQuery('\n'.join(query), dic)
 
 class Neo4jFilterQuery(Neo4jQueryBuilder):
     def generalFilter(self, filter: GeneralFilter):
@@ -206,10 +227,10 @@ class Neo4jFilterQuery(Neo4jQueryBuilder):
         return Neo4jDistanceFilter(self._baseBuilder, source, distance, strategy)
 
     def returnType(self, type: QueryReturnTypes):
-        if  type == QueryReturnTypes.COUNT or \
-            type == QueryReturnTypes.TITLE or \
-            type == QueryReturnTypes.ID:
-            return 
+        # if  type == QueryReturnTypes.COUNT or \
+        #     type == QueryReturnTypes.TITLE or \
+        #     type == QueryReturnTypes.ID:
+        return Neo4jSimpleReturn(self._baseBuilder, type)
 
 class Neo4jDistanceFilter(Neo4jFilterQuery):
     source_node: str
@@ -222,8 +243,8 @@ class Neo4jDistanceFilter(Neo4jFilterQuery):
         self.dist = dist
         self.strategy = strategy
 
-    def stringify(self) -> str:
-        pass
+    def stringify(self) -> Neo4jQuerySegment:
+        return ('', dict())
 
 class Neo4jSimpleReturn(Neo4jQueryBuilder):
     type : QueryReturnTypes
@@ -232,8 +253,8 @@ class Neo4jSimpleReturn(Neo4jQueryBuilder):
         super().__init__(base)
         self.type = type
 
-    def stringify(self) -> str:
-        pass
+    def stringify(self) -> Neo4jQuerySegment:
+        return ('', dict())
 
 class Neo4jGeneralFilter(Neo4jFilterQuery):
     filter: GeneralFilter
@@ -242,5 +263,5 @@ class Neo4jGeneralFilter(Neo4jFilterQuery):
         super().__init__(base)
         self.filter = filter
 
-    def stringify(self) -> str:
-        pass
+    def stringify(self) -> Neo4jQuerySegment:
+        return ('', dict())
