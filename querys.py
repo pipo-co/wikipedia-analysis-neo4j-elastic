@@ -4,7 +4,7 @@ from elasticsearch_dsl.query import Q
 
 import dependencies
 from dependencies.settings import settings
-from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter
+from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter, QueryReturnTypes
 from dependencies.databases import neo_instance, es_instance
 from repositories.neo4j_repo import Neo4jDistanceFilterBuilder, mapper
 
@@ -33,7 +33,10 @@ def process_query(query: ArticleQuery):
     if query.sort is not None:
         neoBuilder = neoBuilder.sortBy(query.sort)
 
-    neoBuilder = neoBuilder.returnType(query.return_type)
+    if query.return_type == QueryReturnTypes.NODE_WITH_CONTENT:
+        neoBuilder = neoBuilder.returnType(QueryReturnTypes.NODE)
+    else:
+        neoBuilder = neoBuilder.returnType(query.return_type)
 
     if query.offset is not None:
         neoBuilder = neoBuilder.skip(query.offset)
@@ -41,7 +44,10 @@ def process_query(query: ArticleQuery):
     if query.limit is not None:
         neoBuilder = neoBuilder.limit(query.limit)
     
-    return neo.executeQuery(neoBuilder)
+    results = neo.executeQuery(neoBuilder)
+    if query.return_type == QueryReturnTypes.NODE_WITH_CONTENT:
+        pass #TODO: agregar contenido a los results
+    return results
 
     
 def strict_search_query(center: str, string: str, leaps: int) -> List[ArticleNode]:
