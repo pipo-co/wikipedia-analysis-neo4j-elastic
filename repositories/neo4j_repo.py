@@ -3,7 +3,7 @@ import itertools
 
 from neo4j.work import result
 from neo4j.work.transaction import Transaction
-from models import ArticleNode, DistanceFilterStrategy, GeneralFilter, QueryReturnTypes
+from models import ArticleNode, DistanceFilterStrategy, GeneralFilter, NeoLinksFilter, QueryReturnTypes
 from typing import Any, List, Optional, Tuple, final
 
 import neo4j
@@ -160,7 +160,7 @@ class Neo4jRepository:
     def buildQuery(self) -> 'Neo4jFilterQuery':
         return Neo4jFilterQuery()
 
-    def executeQuery(self, query: 'Neo4jQuery') -> Result:
+    def executeQuery(self, query: 'Neo4jQueryBuilder') -> Result:
         with self.session() as session:
             return session.write_transaction(query.execute)
 
@@ -183,25 +183,20 @@ def mapper(record: Record) -> ArticleNode:
 class Neo4jWriteException(Exception):
     pass
 
-Neo4jQuerySegment = Tuple[str, dict[str, Any]]
-
-class Neo4jQuery:
-    query: str
-    kwargs: dict[str, Any]
-
-    def __init__(self, query: str, args: dict[str, Any]):
-        self.kwargs = args
-        self.query = query
-
-    def execute(self, tx: Transaction) -> Result:
-        return tx.run(self.query, **self.kwargs)
+Neo4jQuerySegment = Tuple[str, Optional[dict[str, Any]]]
 
 class Neo4jQueryBuilder():
     _baseBuilder: Optional['Neo4jQueryBuilder']
-    ident = 0
+    __ident = 0
 
     def __init__(self, base: 'Neo4jQueryBuilder' = None) -> None:
         self._baseBuilder = base
+
+    @staticmethod
+    def ident():
+        x = Neo4jQueryBuilder.__ident
+        Neo4jQueryBuilder.__ident += 1
+        return x
 
     @abstractmethod
     def stringify(self) -> Neo4jQuerySegment:
@@ -214,25 +209,40 @@ class Neo4jQueryBuilder():
         return list
 
     @final
-    def build(self) -> Neo4jQuery:
+    def build(self) -> Neo4jQuerySegment:
         query, args = map(list, zip(*self._build()))
-        dic = dict(itertools.chain.from_iterable(d.items() for d in args))
-        return Neo4jQuery('\n'.join(query), dic)
+        dic = dict(itertools.chain.from_iterable(d.items() for d in args if d is not None))
+        return ('\n'.join(query), dic)
+
+    @final
+    def _execute(self, tx: Transaction) -> Result:
+        query, kwargs = self.build()
+        print(query)
+        return tx.run(query, **kwargs)
+
+    def execute(self, tx: Transaction) -> Any:
+        raise Exception('Result type not expecified')
 
 class Neo4jFilterQuery(Neo4jQueryBuilder):
     def generalFilter(self, filter: GeneralFilter):
-        return Neo4jGeneralFilter(self._baseBuilder, filter)
+        return Neo4jGeneralFilter(self, filter)
 
     def distanceFilter(self, source: str, distance: int, strategy: DistanceFilterStrategy):
-        return Neo4jDistanceFilter(self._baseBuilder, source, distance, strategy)
+        return Neo4jDistanceFilterBuilder(self, source, distance, strategy)
+
+    def linksFilter(self, filter: NeoLinksFilter):
+        return Neo4jLinksFilterBuilder(self, filter)
 
     def returnType(self, type: QueryReturnTypes):
         # if  type == QueryReturnTypes.COUNT or \
         #     type == QueryReturnTypes.TITLE or \
         #     type == QueryReturnTypes.ID:
-        return Neo4jSimpleReturn(self._baseBuilder, type)
+        return Neo4jListReturn(self, type)
 
-class Neo4jDistanceFilter(Neo4jFilterQuery):
+    def stringify(self) -> Neo4jQuerySegment:
+        return ('match (n:Article)', None)
+
+class Neo4jDistanceFilterBuilder(Neo4jFilterQuery):
     source_node: str
     dist: int
     strategy: DistanceFilterStrategy
@@ -244,9 +254,34 @@ class Neo4jDistanceFilter(Neo4jFilterQuery):
         self.strategy = strategy
 
     def stringify(self) -> Neo4jQuerySegment:
-        return ('', dict())
+        return ('', None)
 
-class Neo4jSimpleReturn(Neo4jQueryBuilder):
+class Neo4jLinksFilterBuilder(Neo4jFilterQuery):
+    filter: NeoLinksFilter
+
+    def __init__(self, base: 'Neo4jQueryBuilder', filter: NeoLinksFilter) -> None:
+        super().__init__(base)
+        self.filter = filter
+
+    def stringify(self) -> Neo4jQuerySegment:
+        ident = Neo4jQueryBuilder.ident()
+        hasCategories = self.filter.categories is not None
+        str =   "call {\n" \
+                "    with n\n" \
+                "    match (n)-[links:Link]->(m:Article)\n" + \
+                (f"    where $categories{ident} in m.categories\n" \
+                    if hasCategories else "") + \
+                "    return count(links) as links }\n" \
+                "with links as count, n\n"\
+                f"where count > {self.filter.min_count} " +\
+                (f"and count < {self.filter.max_count}\n"
+                    if self.filter.max_count is not None else "\n") + \
+                "with n"
+        dic = {f'categories{ident}': self.filter.categories} if hasCategories else None
+        return (str, dic)
+
+
+class Neo4jListReturn(Neo4jQueryBuilder):
     type : QueryReturnTypes
 
     def __init__(self, base: Neo4jQueryBuilder, type: QueryReturnTypes) -> None:
@@ -254,7 +289,21 @@ class Neo4jSimpleReturn(Neo4jQueryBuilder):
         self.type = type
 
     def stringify(self) -> Neo4jQuerySegment:
-        return ('', dict())
+        if self.type == QueryReturnTypes.NODE:
+            str = "match (n)-[]->(linked)\n" \
+            "return {article_id: n.article_id, title: n.title, categories: n.categories, \n" \
+            "links: collect({article_id: linked.article_id, title: linked.title})}"
+        elif self.type == QueryReturnTypes.TITLE:
+            str = "return n.title as title"
+
+        return (str, None)
+
+    def execute(self, tx: Transaction) -> list:
+        result = self._execute(tx)
+        if self.type == QueryReturnTypes.NODE:
+            return list(map(mapper, result))
+        elif self.type == QueryReturnTypes.TITLE:
+            return list(map(lambda r: r['title'], result))
 
 class Neo4jGeneralFilter(Neo4jFilterQuery):
     filter: GeneralFilter
@@ -264,4 +313,4 @@ class Neo4jGeneralFilter(Neo4jFilterQuery):
         self.filter = filter
 
     def stringify(self) -> Neo4jQuerySegment:
-        return ('', dict())
+        return ('', None)

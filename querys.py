@@ -4,7 +4,7 @@ import dependencies
 from dependencies.settings import settings
 from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoLinksFilter
 from dependencies.databases import neo_instance, es_instance
-from repositories.neo4j_repo import Neo4jDistanceFilter, mapper
+from repositories.neo4j_repo import Neo4jDistanceFilterBuilder, mapper
 
 
 def process_query(query: ArticleQuery):
@@ -19,18 +19,17 @@ def process_query(query: ArticleQuery):
 
     if query.neo_filter is not None:
         for filter in query.neo_filter:
-            if type(filter) is Neo4jDistanceFilter:
+            if type(filter) is Neo4jDistanceFilterBuilder:
                 neoBuilder = neoBuilder.distanceFilter(filter)
             elif type(filter) is NeoLinksFilter:
-                pass
+                neoBuilder = neoBuilder.linksFilter(filter)
 
     if query.general_filters is not None:
         for filter in query.general_filters:
             neoBuilder = neoBuilder.generalFilter(filter)
 
     neoBuilder = neoBuilder.returnType(query.return_type)
-    neoQuery = neoBuilder.build()
-    return neo.executeQuery(neoQuery)
+    return neo.executeQuery(neoBuilder)
 
     
 def strict_search_query(center: str, string: str, leaps: int) -> List[ArticleNode]:
