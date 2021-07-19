@@ -269,7 +269,7 @@ class Neo4jLinksFilterBuilder(Neo4jFilterQuery):
         str =   "call {\n" \
                 "    with n\n" \
                 "    match (n)-[links:Link]->(m:Article)\n" + \
-                (f"    where $categories{ident} in m.categories\n" \
+                (f"    where all(cat in $categories{ident} where cat in m.categories)\n" \
                     if hasCategories else "") + \
                 "    return count(links) as links }\n" \
                 "with links as count, n\n"\
