@@ -1,9 +1,10 @@
 from abc import ABCMeta, abstractmethod
+from dataclasses import field
 import itertools
 
 from neo4j.work import result
 from neo4j.work.transaction import Transaction
-from models import ArticleNode, DistanceFilterStrategy, GeneralFilter, NeoLinksFilter, QueryReturnTypes
+from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoLinksFilter, QueryReturnTypes, TitlesFilter
 from typing import Any, List, Optional, Tuple, final
 
 import neo4j
@@ -234,10 +235,12 @@ class Neo4jFilterQuery(Neo4jQueryBuilder):
         return Neo4jLinksFilterBuilder(self, filter)
 
     def returnType(self, type: QueryReturnTypes):
-        # if  type == QueryReturnTypes.COUNT or \
-        #     type == QueryReturnTypes.TITLE or \
-        #     type == QueryReturnTypes.ID:
-        return Neo4jListReturn(self, type)
+        if  type == QueryReturnTypes.NODE or \
+            type == QueryReturnTypes.TITLE or \
+            type == QueryReturnTypes.ID:
+            return Neo4jListReturn(self, type)
+        elif type == QueryReturnTypes.COUNT:
+            return Neo4jSingleReturn(self, type)
 
     def stringify(self) -> Neo4jQuerySegment:
         return ('match (n:Article)', None)
@@ -282,7 +285,7 @@ class Neo4jLinksFilterBuilder(Neo4jFilterQuery):
 
 
 class Neo4jListReturn(Neo4jQueryBuilder):
-    type : QueryReturnTypes
+    type: QueryReturnTypes
 
     def __init__(self, base: Neo4jQueryBuilder, type: QueryReturnTypes) -> None:
         super().__init__(base)
@@ -295,6 +298,8 @@ class Neo4jListReturn(Neo4jQueryBuilder):
             "links: collect({article_id: linked.article_id, title: linked.title})}"
         elif self.type == QueryReturnTypes.TITLE:
             str = "return n.title as title"
+        elif self.type == QueryReturnTypes.ID:
+            str = "return n.article_id as id"
 
         return (str, None)
 
@@ -304,6 +309,25 @@ class Neo4jListReturn(Neo4jQueryBuilder):
             return list(map(mapper, result))
         elif self.type == QueryReturnTypes.TITLE:
             return list(map(lambda r: r['title'], result))
+        elif self.type == QueryReturnTypes.ID:
+            return list(map(lambda r: r['id'], result))
+
+class Neo4jSingleReturn(Neo4jQueryBuilder):
+    type: QueryReturnTypes
+
+    def __init__(self, base: 'Neo4jQueryBuilder', type: QueryReturnTypes) -> None:
+        super().__init__(base)
+        self.type = type
+
+    def stringify(self) -> Neo4jQuerySegment:
+        if self.type == QueryReturnTypes.COUNT:
+            str = "return count(n) as count"
+        return (str, None)
+
+    def execute(self, tx: Transaction) -> Any:
+        result = self._execute(tx)
+        if self.type == QueryReturnTypes.COUNT:
+            return {'count': result.single()[0]}
 
 class Neo4jGeneralFilter(Neo4jFilterQuery):
     filter: GeneralFilter
@@ -313,4 +337,22 @@ class Neo4jGeneralFilter(Neo4jFilterQuery):
         self.filter = filter
 
     def stringify(self) -> Neo4jQuerySegment:
-        return ('', None)
+        ident = Neo4jQueryBuilder.ident()
+
+        if type(self.filter) == IdsFilter:
+            field = 'article_id'
+            arr = self.filter.ids
+        elif type(self.filter) == TitlesFilter:
+            field = 'title'
+            arr = self.filter.titles
+        elif type(self.filter) == CategoriesFilter:
+            field = 'categories'
+            arr = self.filter.categories
+
+        str = "match (n:Article)\n" + \
+            (f"where n.{field} in $arr{ident}\n" \
+                if field != 'categories' else
+            f"where any(x in n.{field} where x in $arr{ident})\n") + \
+            "with n"
+        dic = {f"arr{ident}": arr}
+        return (str, dic)
