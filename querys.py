@@ -1,8 +1,10 @@
 from typing import List
 
+from elasticsearch_dsl.query import Q
+
 import dependencies
 from dependencies.settings import settings
-from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoLinksFilter
+from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter
 from dependencies.databases import neo_instance, es_instance
 from repositories.neo4j_repo import Neo4jDistanceFilterBuilder, mapper
 
@@ -19,7 +21,7 @@ def process_query(query: ArticleQuery):
 
     if query.neo_filter is not None:
         for filter in query.neo_filter:
-            if type(filter) is Neo4jDistanceFilterBuilder:
+            if type(filter) is NeoDistanceFilter:
                 neoBuilder = neoBuilder.distanceFilter(filter)
             elif type(filter) is NeoLinksFilter:
                 neoBuilder = neoBuilder.linksFilter(filter)
@@ -28,7 +30,17 @@ def process_query(query: ArticleQuery):
         for filter in query.general_filters:
             neoBuilder = neoBuilder.generalFilter(filter)
 
+    if query.sort is not None:
+        neoBuilder = neoBuilder.sortBy(query.sort)
+
     neoBuilder = neoBuilder.returnType(query.return_type)
+
+    if query.offset is not None:
+        neoBuilder = neoBuilder.skip(query.offset)
+
+    if query.limit is not None:
+        neoBuilder = neoBuilder.limit(query.limit)
+    
     return neo.executeQuery(neoBuilder)
 
     

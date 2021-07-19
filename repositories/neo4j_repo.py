@@ -4,7 +4,7 @@ import itertools
 
 from neo4j.work import result
 from neo4j.work.transaction import Transaction
-from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoLinksFilter, QueryReturnTypes, TitlesFilter
+from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter
 from typing import Any, List, Optional, Tuple, final
 
 import neo4j
@@ -158,10 +158,10 @@ class Neo4jRepository:
         )
         return result.single()
 
-    def buildQuery(self) -> 'Neo4jFilterQuery':
-        return Neo4jFilterQuery()
+    def buildQuery(self) -> 'Neo4jFilterBuilder':
+        return Neo4jFilterBuilder()
 
-    def executeQuery(self, query: 'Neo4jQueryBuilder') -> Result:
+    def executeQuery(self, query: 'Neo4jFinalBuilder') -> Result:
         with self.session() as session:
             return session.write_transaction(query.execute)
 
@@ -215,51 +215,48 @@ class Neo4jQueryBuilder():
         dic = dict(itertools.chain.from_iterable(d.items() for d in args if d is not None))
         return ('\n'.join(query), dic)
 
-    @final
-    def _execute(self, tx: Transaction) -> Result:
-        query, kwargs = self.build()
-        print(query)
-        return tx.run(query, **kwargs)
-
-    def execute(self, tx: Transaction) -> Any:
-        raise Exception('Result type not expecified')
-
-class Neo4jFilterQuery(Neo4jQueryBuilder):
+class Neo4jFilterBuilder(Neo4jQueryBuilder):
     def generalFilter(self, filter: GeneralFilter):
-        return Neo4jGeneralFilter(self, filter)
+        return Neo4jGeneralFilterBuilder(self, filter)
 
-    def distanceFilter(self, source: str, distance: int, strategy: DistanceFilterStrategy):
-        return Neo4jDistanceFilterBuilder(self, source, distance, strategy)
+    def distanceFilter(self, filter: NeoDistanceFilter):
+        return Neo4jDistanceFilterBuilder(self, filter)
 
     def linksFilter(self, filter: NeoLinksFilter):
         return Neo4jLinksFilterBuilder(self, filter)
 
     def returnType(self, type: QueryReturnTypes):
-        if  type == QueryReturnTypes.NODE or \
-            type == QueryReturnTypes.TITLE or \
-            type == QueryReturnTypes.ID:
-            return Neo4jListReturn(self, type)
-        elif type == QueryReturnTypes.COUNT:
-            return Neo4jSingleReturn(self, type)
+        return Neo4jReturnBuilder.byType(self, type)
+
+    def sortBy(self, sort: QuerySort):
+        return Neo4jSortBuilder(self, sort)
 
     def stringify(self) -> Neo4jQuerySegment:
         return ('match (n:Article)', None)
 
-class Neo4jDistanceFilterBuilder(Neo4jFilterQuery):
-    source_node: str
-    dist: int
-    strategy: DistanceFilterStrategy
+class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
+    filter: NeoDistanceFilter
 
-    def __init__(self, base: Neo4jQueryBuilder, source_node: str, dist: int, strategy: DistanceFilterStrategy) -> None:
+    def __init__(self, base: Neo4jQueryBuilder, filter: NeoDistanceFilter) -> None:
         super().__init__(base)
-        self.source_node = source_node
-        self.dist = dist
-        self.strategy = strategy
+        self.filter = filter
 
     def stringify(self) -> Neo4jQuerySegment:
-        return ('', None)
+        ident = Neo4jQueryBuilder.ident()
+        if self.filter.strategy == DistanceFilterStrategy.AT_DIST:
+            strategy = 'athop'
+        elif self.filter.strategy == DistanceFilterStrategy.UP_TO_DIST:
+            strategy = 'tohop'
+        str =   f"MATCH (source: Article {{title: $title{ident}}})\n" \
+                f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                "YIELD node\n" \
+                "with collect(n.article_id) as ids, node\n" \
+                "where node.article_id in ids\n" \
+                "with node as n"
+        dic = {f"title{ident}": self.filter.source_node}
+        return (str, dic)
 
-class Neo4jLinksFilterBuilder(Neo4jFilterQuery):
+class Neo4jLinksFilterBuilder(Neo4jFilterBuilder):
     filter: NeoLinksFilter
 
     def __init__(self, base: 'Neo4jQueryBuilder', filter: NeoLinksFilter) -> None:
@@ -283,14 +280,42 @@ class Neo4jLinksFilterBuilder(Neo4jFilterQuery):
         dic = {f'categories{ident}': self.filter.categories} if hasCategories else None
         return (str, dic)
 
+class Neo4jFinalBuilder(Neo4jQueryBuilder):
+    @final
+    def __execute(self, tx: Transaction) -> Result:
+        query, kwargs = self.build()
+        print(query)
+        return tx.run(query, **kwargs)
 
-class Neo4jListReturn(Neo4jQueryBuilder):
+    def map(self, result: Result):
+        pass
+
+    def execute(self, tx: Transaction) -> Any:
+        return self.map(self.__execute(tx))
+
+class Neo4jReturnBuilder(Neo4jFinalBuilder):
     type: QueryReturnTypes
+
+    @staticmethod
+    def byType(base: Neo4jQueryBuilder, type: QueryReturnTypes) -> 'Neo4jReturnBuilder':
+        if  type == QueryReturnTypes.NODE or \
+            type == QueryReturnTypes.TITLE or \
+            type == QueryReturnTypes.ID:
+            return Neo4jListReturnBuilder(base, type)
+        elif type == QueryReturnTypes.COUNT:
+            return Neo4jSingleReturnBuilder(base, type)
 
     def __init__(self, base: Neo4jQueryBuilder, type: QueryReturnTypes) -> None:
         super().__init__(base)
         self.type = type
 
+    def limit(self, n: int):
+        return Neo4jLimitBuilder(self, n)
+
+    def skip(self, n: int):
+        return Neo4jSkipBuilder(self, n)
+
+class Neo4jListReturnBuilder(Neo4jReturnBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         if self.type == QueryReturnTypes.NODE:
             str = "match (n)-[]->(linked)\n" \
@@ -303,8 +328,7 @@ class Neo4jListReturn(Neo4jQueryBuilder):
 
         return (str, None)
 
-    def execute(self, tx: Transaction) -> list:
-        result = self._execute(tx)
+    def map(self, result: Result) -> list:
         if self.type == QueryReturnTypes.NODE:
             return list(map(mapper, result))
         elif self.type == QueryReturnTypes.TITLE:
@@ -312,24 +336,17 @@ class Neo4jListReturn(Neo4jQueryBuilder):
         elif self.type == QueryReturnTypes.ID:
             return list(map(lambda r: r['id'], result))
 
-class Neo4jSingleReturn(Neo4jQueryBuilder):
-    type: QueryReturnTypes
-
-    def __init__(self, base: 'Neo4jQueryBuilder', type: QueryReturnTypes) -> None:
-        super().__init__(base)
-        self.type = type
-
+class Neo4jSingleReturnBuilder(Neo4jReturnBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         if self.type == QueryReturnTypes.COUNT:
             str = "return count(n) as count"
         return (str, None)
 
-    def execute(self, tx: Transaction) -> Any:
-        result = self._execute(tx)
+    def map(self, result: Result) -> Any:
         if self.type == QueryReturnTypes.COUNT:
             return {'count': result.single()[0]}
 
-class Neo4jGeneralFilter(Neo4jFilterQuery):
+class Neo4jGeneralFilterBuilder(Neo4jFilterBuilder):
     filter: GeneralFilter
 
     def __init__(self, base: Neo4jQueryBuilder, filter: GeneralFilter) -> None:
@@ -349,10 +366,50 @@ class Neo4jGeneralFilter(Neo4jFilterQuery):
             field = 'categories'
             arr = self.filter.categories
 
-        str = "match (n:Article)\n" + \
-            (f"where n.{field} in $arr{ident}\n" \
+        str = (f"where n.{field} in $arr{ident}\n" \
                 if field != 'categories' else
             f"where any(x in n.{field} where x in $arr{ident})\n") + \
             "with n"
         dic = {f"arr{ident}": arr}
         return (str, dic)
+
+class Neo4jSortBuilder(Neo4jQueryBuilder):
+    sort: QuerySort
+
+    def __init__(self, base: Neo4jQueryBuilder, sort: QuerySort) -> None:
+        super().__init__(base)
+        self.sort = sort
+
+    def stringify(self) -> Neo4jQuerySegment:
+        if self.sort.sort_by == SortByEnum.LINK_COUNT:
+            str = "match (n)-[links:Link]->(:Article)\n" \
+                "with n, count(links) as count\n" \
+                "order by count(links)\n" \
+                "with n"
+        else:
+            str = "order by n.{field}"
+        return (str, None)
+    
+    def returnType(self, type: QueryReturnTypes):
+        return Neo4jReturnBuilder.byType(self, type)
+
+class Neo4jCutBuilder(Neo4jFinalBuilder):
+    cut: int
+
+    def __init__(self, base: 'Neo4jQueryBuilder', cut: int) -> None:
+        super().__init__(base)
+        self.cut = cut
+
+    def map(self, result: Result):
+        return self._baseBuilder.map(result)
+
+class Neo4jLimitBuilder(Neo4jCutBuilder):
+    def stringify(self) -> Neo4jQuerySegment:
+        return (f"limit {self.cut}", None)
+
+class Neo4jSkipBuilder(Neo4jCutBuilder):
+    def stringify(self) -> Neo4jQuerySegment:
+        return (f"skip {self.cut}", None)
+
+    def limit(self, n: int):
+        return Neo4jLimitBuilder(self, n)
