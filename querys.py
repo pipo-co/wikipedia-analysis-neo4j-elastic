@@ -70,7 +70,7 @@ def process_query(query: ArticleQuery) -> SearchResponse:
         for node in results:
             node.content = id_content_map[node.id]
 
-    return results
+    return SearchResponse(result=results)
 
     
 def strict_search_query(center: str, string: str, leaps: int) -> List[ArticleNode]:

@@ -3,7 +3,7 @@ import itertools
 
 from neo4j.work.transaction import Transaction
 from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoDistanceFilter, \
-    NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter, SearchResponse, ArticleCount, ArticleLink
+    NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter, SearchResult, ArticleCount, ArticleLink
 from typing import Any, List, Optional, Tuple, final, Dict
 
 import neo4j
@@ -161,7 +161,7 @@ class Neo4jRepository:
     def buildQuery(self) -> 'Neo4jFilterBuilder':
         return Neo4jFilterBuilder()
 
-    def executeQuery(self, query: 'Neo4jFinalBuilder') -> SearchResponse:
+    def executeQuery(self, query: 'Neo4jFinalBuilder') -> SearchResult:
         with self.session() as session:
             return session.write_transaction(query.execute)
 

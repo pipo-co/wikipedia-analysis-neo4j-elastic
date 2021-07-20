@@ -97,8 +97,6 @@ GeneralFilter = Union[IdsFilter, TitlesFilter, CategoriesFilter]
 ElasticFilter = Union[ElasticTextSearchFilter]
 NeoFilter = Union[NeoDistanceFilter, NeoLinksFilter]
 
-SearchResponse = Union[ArticleCount, List[Union[ArticleNode, int, str]]]
-
 # Primero se ejecuta elastic siempre - No hay ors
 class ArticleQuery(BaseModel):
     return_type: QueryReturnTypes = QueryReturnTypes.NODE
@@ -108,3 +106,9 @@ class ArticleQuery(BaseModel):
     sort: Optional[QuerySort] = None
     limit: Optional[int] = None
     offset: Optional[int] = None
+
+
+SearchResult = Union[List[Union[ArticleNode, int, str]], ArticleCount]
+
+class SearchResponse(BaseModel):
+    result: SearchResult

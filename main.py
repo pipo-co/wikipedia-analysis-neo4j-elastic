@@ -13,7 +13,7 @@ from starlette.responses import RedirectResponse
 
 from dependencies import databases
 from dependencies.settings import settings
-from models import ArticleQuery, ImportSummary
+from models import ArticleQuery, ImportSummary, SearchResponse
 from querys import strict_search_query, process_query
 from wikipedia_import import import_wiki
 
@@ -68,7 +68,7 @@ def strict_search(source: str, string: str, leaps: int):
     
     return file
 
-@app.get("/api/search")
+@app.get("/api/search", response_model=SearchResponse)
 def search(query: ArticleQuery):
     return process_query(query)
 
