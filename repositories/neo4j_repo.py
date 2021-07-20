@@ -11,18 +11,16 @@ from neo4j import GraphDatabase, Session, Result, ResultSummary
 from neo4j.data import Record
 from neo4j.exceptions import ClientError
 
-_INDEX_ALREADY_EXISTS_CODE: str = 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists'
-
 class Neo4jRepository:
 
     @staticmethod
     def _create_id_constraint(tx) -> None:
-        id_result: Result = tx.run('CREATE CONSTRAINT article_unique_id ON (a:Article) ASSERT a.article_id IS UNIQUE')
+        id_result: Result = tx.run('CREATE CONSTRAINT article_unique_id IF NOT EXISTS ON (a:Article) ASSERT a.article_id IS UNIQUE')
         id_result.consume()
 
     @staticmethod
     def _create_name_constraint(tx) -> None:
-        name_result: Result = tx.run('CREATE CONSTRAINT article_unique_title ON (a:Article) ASSERT a.title IS UNIQUE')
+        name_result: Result = tx.run('CREATE CONSTRAINT article_unique_title IF NOT EXISTS ON (a:Article) ASSERT a.title IS UNIQUE')
         name_result.consume()
 
     def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str],
@@ -33,21 +31,11 @@ class Neo4jRepository:
         self.db = database if database else neo4j.DEFAULT_DATABASE
 
         with self.session() as session:
-            # Recien en Neo4j 4.3.1 introdujeron IF NOT EXISTS. Por ahora atrapamos la excepcion cuando la constraint ya existe
-
             # id constraint
-            try:
-                session.write_transaction(self._create_id_constraint)
-            except ClientError as e:
-                if e.code != _INDEX_ALREADY_EXISTS_CODE:
-                    raise e
+            session.write_transaction(self._create_id_constraint)
 
             # name constraint
-            try:
-                session.write_transaction(self._create_name_constraint)
-            except ClientError as e:
-                if e.code != _INDEX_ALREADY_EXISTS_CODE:
-                    raise e
+            session.write_transaction(self._create_name_constraint)
 
     def session(self) -> Session:
         return self.driver.session(database=self.db)
@@ -262,7 +250,7 @@ class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
         str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
               f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
               "YIELD node\n" \
-              "WITH collect(n.article_id) as ids, node\n" \
+              "WITH collect(n.article_id) as ids, node, source\n" \
               "WHERE node.article_id in ids\n" \
               "WITH node as n"
         dic = {f"title{ident}": self.filter.source_node}
