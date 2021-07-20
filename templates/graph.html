@@ -19,51 +19,46 @@
   </body>
 </html>
 <script>
-    info = "{{ url_for('static', path='/json/data.json') }}"
-    data = {{ searchResponse }}
-    anychart.data.loadJsonFile( info, function (data) {
-        // create a chart from the loaded data
-        var chart = anychart.graph(data);
+    var chart = anychart.graph({{ result | tojson }});
 
-        // set the title
-        chart.title("Query result");
+    // set the title
+    chart.title("Query result");
 
-        var nodes = chart.nodes();
+    var nodes = chart.nodes();
 
-        // set the size of nodes
-        nodes.normal().height(30);
-        nodes.hovered().height(45);
-        nodes.selected().height(45);
+    // set the size of nodes
+    nodes.normal().height(30);
+    nodes.hovered().height(45);
+    nodes.selected().height(45);
 
-        // set the stroke of nodes
-        nodes.normal().stroke(null);
-        nodes.hovered().stroke("#333333", 3);
-        nodes.selected().stroke("#333333", 3);
+    // set the stroke of nodes
+    nodes.normal().stroke(null);
+    nodes.hovered().stroke("#333333", 3);
+    nodes.selected().stroke("#333333", 3);
 
-        chart.nodes().labels().enabled(true);
- 
-        // configure the labels of nodes
-        {% raw %}
-        chart.nodes().labels().format("{%title}");
-        chart.nodes().labels().fontSize(12);
-        chart.nodes().labels().fontWeight(600);
+    chart.nodes().labels().enabled(true);
 
-        chart.nodes().tooltip().useHtml(true);
-        chart.nodes().tooltip().format(
-          "<span style='font-weight:bold'>{%title}</span><br>Categories: {%categories}"
-        );
-        chart.tooltip().format(function() {
-          if (this.type == "node") {
-            return "<span style='font-weight:bold'>" +
-                  this.title + " " +
-                  "</span>" + "<br>categories: " + this.getData("categories");
-          } else {
-            return this.getData("from") + " -> " + this.getData("to");
-          }
-        });
-        {% endraw %}
+    // configure the labels of nodes
+    {% raw %}
+    chart.nodes().labels().format("{%title}");
+    chart.nodes().labels().fontSize(12);
+    chart.nodes().labels().fontWeight(600);
 
-        // draw the chart
-        chart.container("container").draw();
-    })
+    chart.nodes().tooltip().useHtml(true);
+    chart.nodes().tooltip().format(
+      "<span style='font-weight:bold'>{%title}</span><br>Categories: {%categories}"
+    );
+    chart.tooltip().format(function() {
+      if (this.type == "node") {
+        return "<span style='font-weight:bold'>" +
+              this.title + " " +
+              "</span>" + "<br>categories: " + this.getData("categories");
+      } else {
+        return this.getData("from") + " -> " + this.getData("to");
+      }
+    });
+    {% endraw %}
+
+    // draw the chart
+    chart.container("container").draw();
 </script>

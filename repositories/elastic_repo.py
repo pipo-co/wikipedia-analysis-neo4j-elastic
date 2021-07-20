@@ -81,8 +81,8 @@ class ElasticRepository:
         # Prepare search
         s = Search(using=connections.get_connection(self.repo_id), index=self.index._name)
         if filters:
-            s.query('bool', must=must, should=should)
-        s.source(include=include)
+            s = s.query('bool', must=must, should=should)
+        s = s.source(include=include)
 
         return map(self._id_content_mapper if with_content else self._id_mapper, s.scan())
 

@@ -44,6 +44,16 @@ form {
 	background: #ffe071;
 	box-shadow: 0 0 8px #6b87da;
 }
+div.container {
+	width: 100%;
+	padding: 20px;
+	border-radius: 6px;
+	background: #ffe071;
+	box-shadow: 0 0 8px #6b87da;
+}
+.home-button{
+	justfiy-content: space-between;
+}
 label {
 	color: #182e60;
 	font-weight: bold;
@@ -215,4 +225,11 @@ button:hover {
 		display: block;
 		padding-bottom: 5px;
 	}
+}
+#outer {
+	width: 100%;
+	text-align: center;
+}
+#inner {
+	display: inline-block;
 }

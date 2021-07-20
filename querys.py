@@ -10,7 +10,7 @@ from dependencies.databases import neo_instance, es_instance
 from repositories.neo4j_repo import Neo4jDistanceFilterBuilder, mapper
 
 
-def process_query(query: ArticleQuery) -> SearchResponse:
+async def process_query(query: ArticleQuery) -> SearchResponse:
     es = es_instance()
     neo = neo_instance()
 
@@ -70,7 +70,7 @@ def process_query(query: ArticleQuery) -> SearchResponse:
         for node in results:
             node.content = id_content_map[node.id]
 
-    return results
+    return SearchResponse(result=results)
 
     
 def strict_search_query(center: str, string: str, leaps: int) -> List[ArticleNode]:

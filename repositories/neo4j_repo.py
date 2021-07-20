@@ -3,7 +3,7 @@ import itertools
 
 from neo4j.work.transaction import Transaction
 from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoDistanceFilter, \
-    NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter, SearchResponse, ArticleCount, ArticleLink
+    NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter, SearchResult, ArticleCount, ArticleLink
 from typing import Any, List, Optional, Tuple, final, Dict
 
 import neo4j
@@ -11,18 +11,16 @@ from neo4j import GraphDatabase, Session, Result, ResultSummary
 from neo4j.data import Record
 from neo4j.exceptions import ClientError
 
-_INDEX_ALREADY_EXISTS_CODE: str = 'Neo.ClientError.Schema.EquivalentSchemaRuleAlreadyExists'
-
 class Neo4jRepository:
 
     @staticmethod
     def _create_id_constraint(tx) -> None:
-        id_result: Result = tx.run('CREATE CONSTRAINT article_unique_id ON (a:Article) ASSERT a.article_id IS UNIQUE')
+        id_result: Result = tx.run('CREATE CONSTRAINT article_unique_id IF NOT EXISTS ON (a:Article) ASSERT a.article_id IS UNIQUE')
         id_result.consume()
 
     @staticmethod
     def _create_name_constraint(tx) -> None:
-        name_result: Result = tx.run('CREATE CONSTRAINT article_unique_title ON (a:Article) ASSERT a.title IS UNIQUE')
+        name_result: Result = tx.run('CREATE CONSTRAINT article_unique_title IF NOT EXISTS ON (a:Article) ASSERT a.title IS UNIQUE')
         name_result.consume()
 
     def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str],
@@ -33,21 +31,11 @@ class Neo4jRepository:
         self.db = database if database else neo4j.DEFAULT_DATABASE
 
         with self.session() as session:
-            # Recien en Neo4j 4.3.1 introdujeron IF NOT EXISTS. Por ahora atrapamos la excepcion cuando la constraint ya existe
-
             # id constraint
-            try:
-                session.write_transaction(self._create_id_constraint)
-            except ClientError as e:
-                if e.code != _INDEX_ALREADY_EXISTS_CODE:
-                    raise e
+            session.write_transaction(self._create_id_constraint)
 
             # name constraint
-            try:
-                session.write_transaction(self._create_name_constraint)
-            except ClientError as e:
-                if e.code != _INDEX_ALREADY_EXISTS_CODE:
-                    raise e
+            session.write_transaction(self._create_name_constraint)
 
     def session(self) -> Session:
         return self.driver.session(database=self.db)
@@ -161,7 +149,7 @@ class Neo4jRepository:
     def buildQuery(self) -> 'Neo4jFilterBuilder':
         return Neo4jFilterBuilder()
 
-    def executeQuery(self, query: 'Neo4jFinalBuilder') -> SearchResponse:
+    def executeQuery(self, query: 'Neo4jFinalBuilder') -> SearchResult:
         with self.session() as session:
             return session.write_transaction(query.execute)
 
@@ -257,14 +245,26 @@ class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
         ident = Neo4jQueryBuilder.ident()
         if self.filter.strategy == DistanceFilterStrategy.AT_DIST:
             strategy = 'athop'
+            str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
+                  f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                   "YIELD node\n" \
+                   "WITH collect(n.article_id) as ids, node\n" \
+                   "WHERE node.article_id in ids\n" \
+                   "WITH node as n"
         elif self.filter.strategy == DistanceFilterStrategy.UP_TO_DIST:
             strategy = 'tohop'
-        str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
-              f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
-              "YIELD node\n" \
-              "WITH collect(n.article_id) as ids, node\n" \
-              "WHERE node.article_id in ids\n" \
-              "WITH node as n"
+            str =  f"MATCH (source: Article {{title: $title{ident}}})\n" \
+                   "CALL {\n" \
+                       "WITH source\n" \
+                      f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                       "YIELD node\n" \
+                       "RETURN node\n" \
+                       "UNION\n" \
+                       "WITH source\n" \
+                       "RETURN source as node }\n" \
+                   "WITH collect(n.article_id) as ids, node\n" \
+                   "WHERE node.article_id in ids\n" \
+                   "WITH node as n\n"
         dic = {f"title{ident}": self.filter.source_node}
         return (str, dic)
 

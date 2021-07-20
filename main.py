@@ -1,7 +1,7 @@
 import json
 import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Dict, Optional, List
 from types import SimpleNamespace
 
 import starlette.status as status
@@ -16,7 +16,7 @@ from starlette.responses import Response
 
 from dependencies import databases
 from dependencies.settings import settings
-from models import ArticleQuery, ImportSummary
+from models import ArticleNode, ArticleQuery, ImportSummary, SearchResponse
 from querys import strict_search_query, process_query
 from wikipedia_import import import_wiki
 
@@ -54,8 +54,8 @@ def strict_search(source: str, string: str, leaps: int):
     return strict_search_query(source, string, leaps)
 
 @app.get("/api/search")
-def search(query: ArticleQuery):
-    return process_query(query)
+async def search(query: ArticleQuery):
+    return await process_query(query)
 
 @app.get("/api/search/graph")
 def strict_search_graph(source: str, string: str, leaps: int):
@@ -73,7 +73,7 @@ def strict_search_graph(source: str, string: str, leaps: int):
     for node in data["nodes"]:
         del node['links']
     
-    return json.dumps(data, indent=4)
+    return file
 
 @app.get("/")
 def searchForm(request: Request):
@@ -85,12 +85,13 @@ async def graph(request: Request):
     data = await request.form()
     data = json.loads(data['query'])
     query = ArticleQuery(**data)
-    searchResponse = search(query)
-    return templates.TemplateResponse('graph.html', context={'request': request, 'result': searchResponse})
-
-# @app.get("/setup")
-# def setup(request: Request):
-#     return templates.TemplateResponse('setupForm.html', context={'request': request})
+    searchResponse = await search(query)
+    
+    if isinstance(searchResponse.result, List) and isinstance(searchResponse.result.pop, ArticleNode):
+        result = article_node_to_graph(searchResponse.result)
+        return templates.TemplateResponse('graph.html', context={'request': request, 'result': result})
+    else:
+        return templates.TemplateResponse('normalResponse.html', context={'request': request, 'result': searchResponse.result})
 
 @app.get("/reset")
 async def reset(request: Request):
@@ -106,6 +107,22 @@ async def import_parameters(request: Request, center_param: str = Form(...), lan
     params = WikipediaImportRequest(center_page=center_param, radius=radius_param, lang=lang_param, categories=list(categories_param))
     wikipedia_import(import_request=params)
     return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
+
+def article_node_to_graph(nodes: List[ArticleNode]) -> Dict[str, List]:
+    
+    data ={
+        "nodes" : [],
+        "edges" : []
+    }
+
+    for node in nodes:
+        data["nodes"].append(node.__dict__)
+        data["edges"].extend([{"from": node.id, "to":link.article_id} for link in node.links])
+
+    for node in data["nodes"]:
+        del node['links']
+
+    return data
 
 # DEBUG
 if __name__ == "__main__":
