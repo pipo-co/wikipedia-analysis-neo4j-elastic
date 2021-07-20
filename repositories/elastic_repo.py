@@ -1,4 +1,4 @@
-from typing import Optional, List, Dict, Any, Iterator
+from typing import Optional, List, Dict, Any, Iterator, Union, Tuple, overload, Literal
 
 from elasticsearch_dsl import Index, Document, Text, Keyword, Search, Q, response, analyzer, AttrList
 from elasticsearch_dsl.connections import connections
@@ -47,7 +47,15 @@ class ElasticRepository:
         article.save()
         return article
 
-    def search(self, filters: List[ElasticFilter]) -> Iterator[int]:
+    @overload
+    def search(self, filters: List[ElasticFilter], with_content: Literal[True] = True) -> Iterator[Tuple[int, str]]:
+        pass
+
+    @overload
+    def search(self, filters: List[ElasticFilter], with_content: Literal[False] = False) -> Iterator[int]:
+        pass
+
+    def search(self, filters: List[ElasticFilter], with_content: bool = False) -> Iterator[Union[int, Tuple[int, str]]]:
         must: List[Q] = []
         should: List[Q] = []
 
@@ -65,16 +73,26 @@ class ElasticRepository:
 
                 op.append(Q(query_type, **query_params))
 
-        resp: Response = Search(using=self.repo_id)\
-            .query('bool', must=must, should=should)\
-            .source(include=['article_id'])\
-            .execute()
+        # Projection
+        include: List[str] = ['article_id']
+        if with_content:
+            include.append('content')
 
-        if not resp.success():
-            raise Exception('Elastic search failed')
+        # Prepare search
+        s = Search(using=connections.get_connection(self.repo_id), index=self.index._name)
+        if filters:
+            s.query('bool', must=must, should=should)
+        s.source(include=include)
 
-        return map(lambda hit: hit.article_id, resp.hits)
+        return map(self._id_content_mapper if with_content else self._id_mapper, s.scan())
 
+    @staticmethod
+    def _id_mapper(hit):
+        return hit.article_id
+
+    @staticmethod
+    def _id_content_mapper(hit):
+        return hit.article_id, hit.content
 
     def strict_search_query(self, string: str) -> response:
         s = Search(using=self.repo_id)

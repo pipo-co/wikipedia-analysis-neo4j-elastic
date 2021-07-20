@@ -8,7 +8,7 @@ from mediawiki import MediaWiki, MediaWikiPage, PageError, DisambiguationError
 
 import dependencies.databases
 from dependencies.settings import settings
-from models import ImportArticleNode
+from models import ImportArticleNode, ImportSummary
 from repositories.elastic_repo import ElasticRepository
 from repositories.neo4j_repo import Neo4jRepository
 
@@ -45,11 +45,14 @@ def _link_filter_request(wikipedia: MediaWiki, links: Iterator[str], categories:
 
     return invalid_links, link_request_futures
 
-def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> int:
+def import_wiki(center_title: str, radius: int, categories: List[str], lang: str = 'en') -> ImportSummary:
     if len(categories) > MAX_CATEGORIES or len(categories) == 0:
         raise ValueError(f'Max filtering categories on import is {MAX_CATEGORIES}')
 
+    # Logging variables
     start_time = time.time()
+    total_nodes: int = 0
+    total_relationships: int = 0
 
     # Normalizo las categorias
     categories = ['Category:' + cat for cat in categories]
@@ -79,25 +82,12 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
 
         title_dist_dict[center_page.title] = 0
         node_q.append(center_node)
-
-        # Logging variables
-        ring_count: int = 0
-        current_ring_count: int = 0
-        current_node_count: int
-        total_nodes_imported: int = 0
+        total_nodes += 1
 
         # Recorrido BFS para poder saber la distancia al centro de cada nodo
         while node_q:
             current_node: ImportArticleNode = node_q.popleft()
             current_dist: int = title_dist_dict[current_node.title]  # Distancia del nodo al centro
-
-            # Logging
-            current_node_count = 0
-            if ring_count < current_dist:
-                ring_count = current_dist
-                current_ring_count = 0
-            else:
-                current_ring_count += 1
 
             with concurrent.futures.ThreadPoolExecutor() as executor:
 
@@ -116,6 +106,7 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                         # El nodo ya existia -> solo creo la relacion y listo. No queremos links invalidos ni autoreferencias
                         if dist != INVALID_LINK and current_node.title != link:
                             neo.link_article(current_node.id, link, neo_session)
+                            total_relationships += 1
 
                 # Preparamos los request para filtrar los links por categoria (y invalidos)
                 link_filter_request_futures: List[concurrent.futures.Future] = []
@@ -166,12 +157,12 @@ def import_wiki(center_title: str, radius: int, categories: List[str], lang: str
                     title_dist_dict[page.title] = current_dist + 1
                     node_q.append(ImportArticleNode(pageid, page.title, page.links))
 
-                    total_nodes_imported += 1
-                    current_node_count += 1
-                    print(f'({current_node.title})-->({page.title}). Current Ring: {ring_count}. Current Node in Ring: {current_ring_count}. Current relationship: {current_node_count}. Total: {total_nodes_imported}')
+                    total_nodes += 1
+                    total_relationships += 1
+                    print(f'Total time: {int(time.time() - start_time)}. Total nodes: {total_nodes}. Total relations: {total_relationships}. New node: ({current_node.title})-->({page.title})')
 
-    print(f'Total time elapsed: {time.time() - start_time}')
-    return total_nodes_imported
+    return ImportSummary(total_nodes=total_nodes, total_relationships=total_relationships, seconds_elapsed=(time.time() - start_time))
+
 
 # Para testear
 if __name__ == '__main__':

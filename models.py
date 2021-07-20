@@ -10,11 +10,24 @@ class ImportArticleNode:
     title: str
     links: List[str] = field(default_factory=list)
 
+class ImportSummary(BaseModel):
+    total_nodes: int
+    total_relationships: int
+    seconds_elapsed: int
+
+class ArticleLink(BaseModel):
+    article_id: int
+    title: str
+
 class ArticleNode(BaseModel):
     id: int
     title: str
     categories: List[str]
-    links: List[Dict[str, Any]]
+    links: List[ArticleLink]
+    content: Optional[str] = None
+
+class ArticleCount(BaseModel):
+    count: int
 
 # Return Types
 class QueryReturnTypes(str, Enum):
@@ -83,6 +96,8 @@ class QuerySort(BaseModel):
 GeneralFilter = Union[IdsFilter, TitlesFilter, CategoriesFilter]
 ElasticFilter = Union[ElasticTextSearchFilter]
 NeoFilter = Union[NeoDistanceFilter, NeoLinksFilter]
+
+SearchResponse = Union[ArticleCount, List[Union[ArticleNode, int, str]]]
 
 # Primero se ejecuta elastic siempre - No hay ors
 class ArticleQuery(BaseModel):

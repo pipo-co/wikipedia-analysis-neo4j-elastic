@@ -1,11 +1,10 @@
-from abc import ABCMeta, abstractmethod
-from dataclasses import field
+from abc import abstractmethod
 import itertools
 
-from neo4j.work import result
 from neo4j.work.transaction import Transaction
-from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter
-from typing import Any, List, Optional, Tuple, final
+from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoDistanceFilter, \
+    NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter, SearchResponse, ArticleCount, ArticleLink
+from typing import Any, List, Optional, Tuple, final, Dict
 
 import neo4j
 from neo4j import GraphDatabase, Session, Result, ResultSummary
@@ -26,7 +25,8 @@ class Neo4jRepository:
         name_result: Result = tx.run('CREATE CONSTRAINT article_unique_title ON (a:Article) ASSERT a.title IS UNIQUE')
         name_result.consume()
 
-    def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str], database: Optional[str] = None) -> None:
+    def __init__(self, ip: str, port: int, user: Optional[str], password: Optional[str],
+                 database: Optional[str] = None) -> None:
         auth: Optional[Tuple[str, str]] = (user, password) if user and password else None
 
         self.driver = GraphDatabase.driver(f"neo4j://{ip}:{port}", auth=auth)
@@ -64,7 +64,7 @@ class Neo4jRepository:
 
     @staticmethod
     def _truncate_db(tx) -> None:
-        name_result: Result = tx.run('MATCH (n)-[r]-() DELETE n, r')
+        name_result: Result = tx.run('MATCH (n) DETACH DELETE n')
         name_result.consume()
 
     def create_article(self, id: int, title: str, categories: List[str], session: Optional[Session] = None) -> bool:
@@ -145,15 +145,15 @@ class Neo4jRepository:
     def radius_search(self, center: str, string: str, leaps: int) -> Record:
         with self.session() as session:
             return session.write_transaction(self._radius_search, center, string, leaps)
-    
+
     @staticmethod
     def _radius_search(tx: Transaction, center: str, string: str, leaps: int) -> Record:
         result = tx.run(
             "MATCH (center:Article {title: $center_title}), (exterior:Article {title: $ext_title}), "
-            "p = shortestPath((center)-[*1.."+str(leaps)+"]-(exterior)) "
-            "MATCH (exterior)-[]->(m) "
-            "RETURN {article_id: exterior.article_id, title: exterior.title, categories: exterior.categories, " 
-            "links: collect({article_id: m.article_id, title: m.title})}",
+            "p = shortestPath((center)-[*1.." + str(leaps) + "]-(exterior)) "
+                                                             "MATCH (exterior)-[]->(m) "
+                                                             "RETURN {article_id: exterior.article_id, title: exterior.title, categories: exterior.categories, "
+                                                             "links: collect({article_id: m.article_id, title: m.title})}",
             center_title=center, ext_title=string
         )
         return result.single()
@@ -161,14 +161,14 @@ class Neo4jRepository:
     def buildQuery(self) -> 'Neo4jFilterBuilder':
         return Neo4jFilterBuilder()
 
-    def executeQuery(self, query: 'Neo4jFinalBuilder') -> Result:
+    def executeQuery(self, query: 'Neo4jFinalBuilder') -> SearchResponse:
         with self.session() as session:
             return session.write_transaction(query.execute)
 
     def get_connections(self, node_title: str) -> Record:
         with self.session() as session:
             return session.write_transaction(self._get_connections, node_title)
-    
+
     @staticmethod
     def _get_connections(tx: Transaction, node_title: str) -> Record:
         result = tx.run(
@@ -177,16 +177,26 @@ class Neo4jRepository:
         )
         return result.single()
 
+
 def mapper(record: Record) -> ArticleNode:
-    return ArticleNode(id=record['article_id'], title=record['title'], categories=record['categories'], links=record['links'])
+    return ArticleNode(id=record['article_id'], title=record['title'], categories=record['categories'], links=link_list_mapper(record['links']))
+
+def link_list_mapper(links: List[Dict[str, Any]]):
+    return list(map(link_mapper, links))
+
+def link_mapper(link: Dict[str, Any]):
+    return ArticleLink(article_id=link['article_id'], title=link['title'])
+
 
 # Custom Exceptions
 class Neo4jWriteException(Exception):
     pass
 
-Neo4jQuerySegment = Tuple[str, Optional[dict[str, Any]]]
 
-class Neo4jQueryBuilder():
+Neo4jQuerySegment = Tuple[str, Optional[Dict[str, Any]]]
+
+
+class Neo4jQueryBuilder:
     _baseBuilder: Optional['Neo4jQueryBuilder']
     __ident = 0
 
@@ -215,6 +225,7 @@ class Neo4jQueryBuilder():
         dic = dict(itertools.chain.from_iterable(d.items() for d in args if d is not None))
         return ('\n'.join(query), dic)
 
+
 class Neo4jFilterBuilder(Neo4jQueryBuilder):
     def generalFilter(self, filter: GeneralFilter):
         return Neo4jGeneralFilterBuilder(self, filter)
@@ -234,6 +245,7 @@ class Neo4jFilterBuilder(Neo4jQueryBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         return ('MATCH (n:Article)', None)
 
+
 class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
     filter: NeoDistanceFilter
 
@@ -247,14 +259,15 @@ class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
             strategy = 'athop'
         elif self.filter.strategy == DistanceFilterStrategy.UP_TO_DIST:
             strategy = 'tohop'
-        str =   f"MATCH (source: Article {{title: $title{ident}}})\n" \
-                f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
-                "YIELD node\n" \
-                "WITH collect(n.article_id) as ids, node\n" \
-                "WHERE node.article_id in ids\n" \
-                "WITH node as n"
+        str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
+              f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+              "YIELD node\n" \
+              "WITH collect(n.article_id) as ids, node\n" \
+              "WHERE node.article_id in ids\n" \
+              "WITH node as n"
         dic = {f"title{ident}": self.filter.source_node}
         return (str, dic)
+
 
 class Neo4jLinksFilterBuilder(Neo4jFilterBuilder):
     filter: NeoLinksFilter
@@ -266,19 +279,20 @@ class Neo4jLinksFilterBuilder(Neo4jFilterBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         ident = Neo4jQueryBuilder.ident()
         hasCategories = self.filter.categories is not None
-        str =   "CALL {\n" \
-                "    WITH n\n" \
-                "    MATCH (n)-[links:Link]->(m:Article)\n" + \
-                (f"    WHERE all(cat in $categories{ident} WHERE cat in m.categories)\n" \
-                    if hasCategories else "") + \
-                "    RETURN count(links) as links }\n" \
-                "WITH links as count, n\n"\
-                f"WHERE count > {self.filter.min_count} " +\
-                (f"and count < {self.filter.max_count}\n"
-                    if self.filter.max_count is not None else "\n") + \
-                "WITH n"
+        str = "CALL {\n" \
+              "    WITH n\n" \
+              "    MATCH (n)-[links:Link]->(m:Article)\n" + \
+              (f"    WHERE all(cat in $categories{ident} WHERE cat in m.categories)\n" \
+                   if hasCategories else "") + \
+              "    RETURN count(links) as links }\n" \
+              "WITH links as count, n\n" \
+              f"WHERE count > {self.filter.min_count} " + \
+              (f"and count < {self.filter.max_count}\n"
+               if self.filter.max_count is not None else "\n") + \
+              "WITH n"
         dic = {f'categories{ident}': self.filter.categories} if hasCategories else None
         return (str, dic)
+
 
 class Neo4jFinalBuilder(Neo4jQueryBuilder):
     @final
@@ -293,14 +307,17 @@ class Neo4jFinalBuilder(Neo4jQueryBuilder):
     def execute(self, tx: Transaction) -> Any:
         return self.map(self.__execute(tx))
 
+
 class Neo4jReturnBuilder(Neo4jFinalBuilder):
     type: QueryReturnTypes
 
     @staticmethod
     def byType(base: Neo4jQueryBuilder, type: QueryReturnTypes) -> 'Neo4jReturnBuilder':
-        if  type == QueryReturnTypes.NODE or \
-            type == QueryReturnTypes.TITLE or \
-            type == QueryReturnTypes.ID:
+        if (
+            type == QueryReturnTypes.NODE or
+            type == QueryReturnTypes.TITLE or
+            type == QueryReturnTypes.ID
+        ):
             return Neo4jListReturnBuilder(base, type)
         elif type == QueryReturnTypes.COUNT:
             return Neo4jSingleReturnBuilder(base, type)
@@ -315,12 +332,13 @@ class Neo4jReturnBuilder(Neo4jFinalBuilder):
     def skip(self, n: int):
         return Neo4jSkipBuilder(self, n)
 
+
 class Neo4jListReturnBuilder(Neo4jReturnBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         if self.type == QueryReturnTypes.NODE:
             str = "MATCH (n)-[]->(linked)\n" \
-            "RETURN {article_id: n.article_id, title: n.title, categories: n.categories, \n" \
-            "links: collect({article_id: linked.article_id, title: linked.title})}"
+                  "RETURN {article_id: n.article_id, title: n.title, categories: n.categories, \n" \
+                  "links: collect({article_id: linked.article_id, title: linked.title})}"
         elif self.type == QueryReturnTypes.TITLE:
             str = "RETURN n.title as title"
         elif self.type == QueryReturnTypes.ID:
@@ -330,11 +348,11 @@ class Neo4jListReturnBuilder(Neo4jReturnBuilder):
 
     def map(self, result: Result) -> list:
         if self.type == QueryReturnTypes.NODE:
-            return list(map(mapper, result))
+            return [mapper(record[0]) for record in result]
         elif self.type == QueryReturnTypes.TITLE:
-            return list(map(lambda r: r['title'], result))
+            return [record[0] for record in result]
         elif self.type == QueryReturnTypes.ID:
-            return list(map(lambda r: r['id'], result))
+            return [record[0] for record in result]
 
 class Neo4jSingleReturnBuilder(Neo4jReturnBuilder):
     def stringify(self) -> Neo4jQuerySegment:
@@ -344,7 +362,8 @@ class Neo4jSingleReturnBuilder(Neo4jReturnBuilder):
 
     def map(self, result: Result) -> Any:
         if self.type == QueryReturnTypes.COUNT:
-            return {'count': result.single()[0]}
+            return ArticleCount(count=result.single()[0])
+
 
 class Neo4jGeneralFilterBuilder(Neo4jFilterBuilder):
     filter: GeneralFilter
@@ -365,13 +384,16 @@ class Neo4jGeneralFilterBuilder(Neo4jFilterBuilder):
         elif type(self.filter) == CategoriesFilter:
             field = 'categories'
             arr = self.filter.categories
+        else:
+            raise ValueError(f'Invalid filter type {filter}')
 
-        str = (f"WHERE n.{field} in $arr{ident}\n" \
-                if field != 'categories' else
-            f"WHERE any(x in n.{field} WHERE x in $arr{ident})\n") + \
-            "WITH n"
+        str = (f"WHERE n.{field} in $arr{ident}\n"
+               if field != 'categories' else
+               f"WHERE any(x in n.{field} WHERE x in $arr{ident})\n") + \
+              "WITH n"
         dic = {f"arr{ident}": arr}
         return (str, dic)
+
 
 class Neo4jSortBuilder(Neo4jQueryBuilder):
     sort: QuerySort
@@ -384,17 +406,18 @@ class Neo4jSortBuilder(Neo4jQueryBuilder):
         order = self.sort.type
         if self.sort.sort_by == SortByEnum.LINK_COUNT:
             str = "MATCH (n)-[links:Link]->(:Article)\n" \
-                "WITH n, count(links) as count\n" \
-                f"ORDER BY count(links)\n {order}" \
-                "WITH n"
+                  "WITH n, count(links) as count\n" \
+                  f"ORDER BY count(links)\n {order}" \
+                  "WITH n"
         elif self.sort.sort_by == SortByEnum.ID:
             str = f"ORDER BY n.article_id {order}"
         elif self.sort.sort_by == SortByEnum.TITLE:
             str = f"ORDER BY n.title {order}"
         return (str, None)
-    
+
     def returnType(self, type: QueryReturnTypes):
         return Neo4jReturnBuilder.byType(self, type)
+
 
 class Neo4jCutBuilder(Neo4jFinalBuilder):
     cut: int
@@ -406,9 +429,11 @@ class Neo4jCutBuilder(Neo4jFinalBuilder):
     def map(self, result: Result):
         return self._baseBuilder.map(result)
 
+
 class Neo4jLimitBuilder(Neo4jCutBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         return (f"LIMIT {self.cut}", None)
+
 
 class Neo4jSkipBuilder(Neo4jCutBuilder):
     def stringify(self) -> Neo4jQuerySegment:

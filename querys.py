@@ -1,22 +1,38 @@
-from typing import List
+from typing import List, Optional, Dict
 
 from elasticsearch_dsl.query import Q
 
 import dependencies
 from dependencies.settings import settings
-from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter, QueryReturnTypes
+from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter, \
+    QueryReturnTypes, SearchResponse
 from dependencies.databases import neo_instance, es_instance
 from repositories.neo4j_repo import Neo4jDistanceFilterBuilder, mapper
 
 
-def process_query(query: ArticleQuery):
+def process_query(query: ArticleQuery) -> SearchResponse:
     es = es_instance()
     neo = neo_instance()
 
     neoBuilder = neo.buildQuery()
 
-    if query.elastic_filter is not None:
-        ids = list(es.search(query.elastic_filter))
+    id_content_map: Optional[Dict[int, str]] = None
+
+    if query.elastic_filter is not None or query.return_type == QueryReturnTypes.NODE_WITH_CONTENT:
+        ids: List[int]
+
+        if query.elastic_filter is None:
+            query.elastic_filter = []
+
+        # With or without content from elastic
+        if query.return_type == QueryReturnTypes.NODE_WITH_CONTENT:
+            id_content_map = {}
+            for (id, content) in es.search(query.elastic_filter, True):
+                id_content_map[id] = content
+            ids = list(id_content_map.keys())
+        else:
+            ids = list(es.search(query.elastic_filter, False))
+
         neoBuilder = neoBuilder.generalFilter(IdsFilter(ids=ids))
 
     if query.neo_filter is not None:
@@ -45,8 +61,15 @@ def process_query(query: ArticleQuery):
         neoBuilder = neoBuilder.limit(query.limit)
     
     results = neo.executeQuery(neoBuilder)
+
+    # Agrego el content si aplica
     if query.return_type == QueryReturnTypes.NODE_WITH_CONTENT:
-        pass #TODO: agregar contenido a los results
+        if id_content_map is None:
+            raise AssertionError('id_content_map must not be None')
+
+        for node in results:
+            node.content = id_content_map[node.id]
+
     return results
 
     

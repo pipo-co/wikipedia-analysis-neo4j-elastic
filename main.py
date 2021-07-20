@@ -1,19 +1,20 @@
-from typing import Optional, List
-from fastapi import FastAPI, Request, Form
-from pydantic import BaseModel, Field
-from starlette.responses import RedirectResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
+import json
+import os
 from pathlib import Path
+from typing import Optional, List
+
 import starlette.status as status
 import uvicorn
-import os, json
-
-from models import ArticleQuery
-from querys import strict_search_query, process_query
+from fastapi import FastAPI, Request, Form
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field
+from starlette.responses import RedirectResponse
 
 from dependencies import databases
 from dependencies.settings import settings
+from models import ArticleQuery, ImportSummary
+from querys import strict_search_query, process_query
 from wikipedia_import import import_wiki
 
 app = FastAPI()
@@ -35,13 +36,13 @@ def shutdown_event():
     databases.close_all()
 
 class WikipediaImportRequest(BaseModel):
-    center_page: str = Field(..., title="Pagina Centro", description="Titulo de pagina de wikipedia (exactamete como aparece) desde donde se empieza a importar. Requerido.")
+    center_page: str = Field(..., title="Pagina Centro", description="Titulo de pagina de wikipedia (exactamente como aparece) desde donde se empieza a importar. Requerido.")
     radius: int = Field(..., gt=0, title='Centro', description='Distancia maxima a la cual un nodo puede estar de la pagina centro durante la importacion. Requerido.')
     categories: List[str] = Field(..., title='Categorias', description='Solo importar articulos dentro de estas categorias. Requerido.')
     lang: str = Field('en', title='Idioma de Wikipedia', description='El idioma de la wikipedia a usar. Es opcional, defaultea a Ingles.')
 
 
-@app.post("/api/import")
+@app.post("/api/import", response_model=ImportSummary)
 def wikipedia_import(import_request: WikipediaImportRequest):
     return import_wiki(import_request.center_page, import_request.radius, import_request.categories, import_request.lang)
 
@@ -63,7 +64,7 @@ def strict_search(source: str, string: str, leaps: int):
 
     file_name = os.getcwd()+"/static/json/data.json"
     with open(file_name,'w') as f:
-        f.write(json.dumps(data, indent = 4))
+        f.write(json.dumps(data, indent=4))
     
     return file
 

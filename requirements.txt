@@ -33,3 +33,5 @@ uvloop==0.15.2
 watchgod==0.7
 wcwidth==0.2.5
 wikipedia==1.4.0
+pywikibot~=6.4.0
+wikitextparser~=0.47.5
