@@ -8,19 +8,11 @@
 </head>
   <body>
     <div class="testbox">
-      <form method="post">
+      <form action="/graph" method="post" id="queryForm">
         <div class="colums">
           <div class="item">
-            <label for="source">Center Document Name<span>*</span></label>
-            <input id="source" type="text" name="source" required/>
-          </div>
-          <div class="item">
-            <label for="radius">Radius<span>*</span></label>
-            <input id="radius" type="text" name="radius" required/>
-          </div>
-          <div class="item">
-            <label for="string">String</label>
-            <input id="string" type="text" name="string" required/>
+            <label for="query">Query<span>*</span></label>
+            <textarea id="query" rows = "5" cols = "60" name = "query"></textarea>
           </div>
         </div>
         <div class="btn-block">

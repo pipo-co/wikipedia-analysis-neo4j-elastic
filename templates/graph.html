@@ -20,6 +20,7 @@
 </html>
 <script>
     info = "{{ url_for('static', path='/json/data.json') }}"
+    data = {{ searchResponse }}
     anychart.data.loadJsonFile( info, function (data) {
         // create a chart from the loaded data
         var chart = anychart.graph(data);

@@ -2,6 +2,7 @@ import json
 import os
 from pathlib import Path
 from typing import Optional, List
+from types import SimpleNamespace
 
 import starlette.status as status
 import uvicorn
@@ -10,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
+from starlette.requests import Request
+from starlette.responses import Response
 
 from dependencies import databases
 from dependencies.settings import settings
@@ -48,6 +51,14 @@ def wikipedia_import(import_request: WikipediaImportRequest):
 
 @app.get("/api/strict_search")
 def strict_search(source: str, string: str, leaps: int):
+    return strict_search_query(source, string, leaps)
+
+@app.get("/api/search")
+def search(query: ArticleQuery):
+    return process_query(query)
+
+@app.get("/api/search/graph")
+def strict_search_graph(source: str, string: str, leaps: int):
     file = strict_search_query(source, string, leaps)
 
     data ={
@@ -61,37 +72,28 @@ def strict_search(source: str, string: str, leaps: int):
 
     for node in data["nodes"]:
         del node['links']
-
-    file_name = os.getcwd()+"/static/json/data.json"
-    with open(file_name,'w') as f:
-        f.write(json.dumps(data, indent=4))
     
-    return file
-
-@app.get("/api/search")
-def search(query: ArticleQuery):
-    return process_query(query)
+    return json.dumps(data, indent=4)
 
 @app.get("/")
-def search(request: Request):
+def searchForm(request: Request):
     return templates.TemplateResponse('search.html', context={'request': request})
 
-@app.post("/")
-async def search(request: Request, source: str = Form(...), radius: int = Form(...), string: Optional[str] = Form(None)):
-    strict_search(source, string, radius)
-    return RedirectResponse('/graph', status_code=status.HTTP_302_FOUND)
-
 # grafica la ultima query realizada, utiliza el archivo /static/json/data.json
-@app.get("/graph")
-def search(request: Request):
-    return templates.TemplateResponse('graph.html', context={'request': request})
+@app.post("/graph")
+async def graph(request: Request):
+    data = await request.form()
+    data = json.loads(data['query'])
+    query = ArticleQuery(**data)
+    searchResponse = search(query)
+    return templates.TemplateResponse('graph.html', context={'request': request, 'result': searchResponse})
 
 # @app.get("/setup")
 # def setup(request: Request):
 #     return templates.TemplateResponse('setupForm.html', context={'request': request})
 
 @app.get("/reset")
-async def search(request: Request):
+async def reset(request: Request):
     databases.truncate_dbs()
     return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
 
