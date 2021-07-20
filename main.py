@@ -86,8 +86,8 @@ async def graph(request: Request):
     data = json.loads(data['query'])
     query = ArticleQuery(**data)
     searchResponse = await search(query)
-    
-    if isinstance(searchResponse.result, List) and isinstance(searchResponse.result.pop, ArticleNode):
+
+    if isinstance(searchResponse.result, List) and isinstance(searchResponse.result[0], ArticleNode):
         result = article_node_to_graph(searchResponse.result)
         return templates.TemplateResponse('graph.html', context={'request': request, 'result': result})
     else:
