@@ -245,14 +245,26 @@ class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
         ident = Neo4jQueryBuilder.ident()
         if self.filter.strategy == DistanceFilterStrategy.AT_DIST:
             strategy = 'athop'
+            str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
+                  f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                   "YIELD node\n" \
+                   "WITH collect(n.article_id) as ids, node\n" \
+                   "WHERE node.article_id in ids\n" \
+                   "WITH node as n"
         elif self.filter.strategy == DistanceFilterStrategy.UP_TO_DIST:
             strategy = 'tohop'
-        str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
-              f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
-              "YIELD node\n" \
-              "WITH collect(n.article_id) as ids, node, source\n" \
-              "WHERE node.article_id in ids\n" \
-              "WITH node as n"
+            str =  f"MATCH (source: Article {{title: $title{ident}}})\n" \
+                   "CALL {\n" \
+                       "WITH source\n" \
+                      f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                       "YIELD node\n" \
+                       "RETURN node\n" \
+                       "UNION\n" \
+                       "WITH source\n" \
+                       "RETURN source as node }\n" \
+                   "WITH collect(n.article_id) as ids, node\n" \
+                   "WHERE node.article_id in ids\n" \
+                   "WITH node as n\n"
         dic = {f"title{ident}": self.filter.source_node}
         return (str, dic)
 
