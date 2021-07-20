@@ -3,7 +3,7 @@ import itertools
 
 from neo4j.work.transaction import Transaction
 from models import ArticleNode, CategoriesFilter, DistanceFilterStrategy, GeneralFilter, IdsFilter, NeoDistanceFilter, \
-    NeoLinksFilter, QueryReturnTypes, QuerySort, SortByEnum, TitlesFilter, SearchResult, ArticleCount, ArticleLink
+    NeoLinksFilter, QueryReturnTypes, QuerySort, RelationDirection, SortByEnum, TitlesFilter, SearchResult, ArticleCount, ArticleLink
 from typing import Any, List, Optional, Tuple, final, Dict
 
 import neo4j
@@ -243,10 +243,14 @@ class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
 
     def stringify(self) -> Neo4jQuerySegment:
         ident = Neo4jQueryBuilder.ident()
+        if self.filter.direction == RelationDirection.OUTGOING:
+            direction = '>'
+        elif self.filter.direction == RelationDirection.INGOING:
+            direction = '<'
         if self.filter.strategy == DistanceFilterStrategy.AT_DIST:
             strategy = 'athop'
             str = f"MATCH (source: Article {{title: $title{ident}}})\n" \
-                  f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                  f"CALL apoc.neighbors.{strategy}(source, 'Link{direction}', {self.filter.dist})\n" \
                    "YIELD node\n" \
                    "WITH collect(n.article_id) as ids, node\n" \
                    "WHERE node.article_id in ids\n" \
@@ -256,7 +260,7 @@ class Neo4jDistanceFilterBuilder(Neo4jFilterBuilder):
             str =  f"MATCH (source: Article {{title: $title{ident}}})\n" \
                    "CALL {\n" \
                        "WITH source\n" \
-                      f"CALL apoc.neighbors.{strategy}(source, 'Link>', {self.filter.dist})\n" \
+                      f"CALL apoc.neighbors.{strategy}(source, 'Link{direction}', {self.filter.dist})\n" \
                        "YIELD node\n" \
                        "RETURN node\n" \
                        "UNION\n" \
@@ -279,10 +283,14 @@ class Neo4jLinksFilterBuilder(Neo4jFilterBuilder):
     def stringify(self) -> Neo4jQuerySegment:
         ident = Neo4jQueryBuilder.ident()
         hasCategories = self.filter.categories is not None
+        if self.filter.direction == RelationDirection.OUTGOING:
+            direction = "    MATCH (n)-[links:Link]->(m:Article)\n"
+        elif self.filter.direction == RelationDirection.INGOING:
+            direction = "    MATCH (m:Article)-[links:Link]->(n)\n"
         str = "CALL {\n" \
-              "    WITH n\n" \
-              "    MATCH (n)-[links:Link]->(m:Article)\n" + \
-              (f"    WHERE all(cat in $categories{ident} WHERE cat in m.categories)\n" \
+              "    WITH n\n" +\
+              direction + \
+              (f"    WHERE any(cat in $categories{ident} WHERE cat in m.categories)\n" \
                    if hasCategories else "") + \
               "    RETURN count(links) as links }\n" \
               "WITH links as count, n\n" \
