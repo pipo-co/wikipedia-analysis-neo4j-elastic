@@ -49,31 +49,13 @@ class WikipediaImportRequest(BaseModel):
 def wikipedia_import(import_request: WikipediaImportRequest):
     return import_wiki(import_request.center_page, import_request.radius, import_request.categories, import_request.lang)
 
-@app.get("/api/strict_search")
+@app.get("/api/simple_search")
 def strict_search(source: str, string: str, leaps: int):
     return strict_search_query(source, string, leaps)
 
 @app.get("/api/search")
 async def search(query: ArticleQuery):
     return await process_query(query)
-
-@app.get("/api/search/graph")
-def strict_search_graph(source: str, string: str, leaps: int):
-    file = strict_search_query(source, string, leaps)
-
-    data ={
-        "nodes" : [],
-        "edges" : []
-    }
-
-    for node in file:
-        data["nodes"].append(node.__dict__)
-        data["edges"].extend([{"from": node.id, "to":link["article_id"]} for link in node.links])
-
-    for node in data["nodes"]:
-        del node['links']
-    
-    return file
 
 @app.get("/")
 def searchForm(request: Request):
@@ -87,7 +69,7 @@ async def graph(request: Request):
     query = ArticleQuery(**data)
     searchResponse = await search(query)
 
-    if data['return_rtype'] == "NODE":
+    if data['return_type'] == "NODE":
         result = article_node_to_graph(searchResponse.result)
         return templates.TemplateResponse('graph.html', context={'request': request, 'result': result})
     else:
@@ -96,16 +78,6 @@ async def graph(request: Request):
 @app.get("/reset")
 async def reset(request: Request):
     databases.truncate_dbs()
-    return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
-
-@app.get("/import-parameters")
-def import_parameters(request: Request):
-    return templates.TemplateResponse('importForm.html', context={'request': request})
-
-@app.post("/import-parameters")
-async def import_parameters(request: Request, center_param: str = Form(...), lang_param: str = Form(...), radius_param: str = Form(...), categories_param: Optional[str] = Form(None)):
-    params = WikipediaImportRequest(center_page=center_param, radius=radius_param, lang=lang_param, categories=list(categories_param))
-    wikipedia_import(import_request=params)
     return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
 
 def article_node_to_graph(nodes: List[ArticleNode]) -> Dict[str, List]:
@@ -127,36 +99,3 @@ def article_node_to_graph(nodes: List[ArticleNode]) -> Dict[str, List]:
 # DEBUG
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=8000)
-
-# @app.post("/setup")
-# async def setup(request: Request, elastic_ip: str = Form(...), elastic_port: int = Form(...),
-#             neo_ip: str = Form(...), neo_port: int = Form(...)):
-#     global elastic_parameters, neo_parameters, es, neo
-#
-#     elastic_parameters["ip"] = elastic_ip
-#     elastic_parameters["port"] = elastic_port
-#     neo_parameters["ip"] = neo_ip
-#     neo_parameters["port"] = neo_port
-#
-#     # db auth not implemented yet
-#     es = Elasticsearch(HOST=elastic_parameters["ip"],PORT=elastic_parameters["port"])
-#     neo = Neo4jRepository(neo_parameters["ip"], neo_parameters["port"], "neo4j", "password")
-#
-#     return RedirectResponse('/import-parameters', status_code=status.HTTP_302_FOUND)
-
-# @app.get("/test-elastic-post")
-# def elastic_test_post(request: Request):
-#     document = {
-#         "description": "this is a test",
-#         "timestamp": datetime.now()
-#     }
-#     index = "testing"
-#     doc_id = 1
-#     es.index(index=index, doc_type="test", id=doc_id, body=document)
-#     return document
-#
-# @app.get("/test-elastic-get")
-# def elastic_test_get(request: Request):
-#     result = es.get(index="testing", doc_type="test", id=1)
-#     retrieved_document = result['_source']
-#     return "Retrieved document: {Id: " + result['_id'] + ", Description: " + retrieved_document['description'] + ", Timestamp: " +retrieved_document['timestamp'] + "}"
