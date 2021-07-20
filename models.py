@@ -57,15 +57,21 @@ class DistanceFilterStrategy(str, Enum):
     AT_DIST = 'AT_DIST'
     UP_TO_DIST = 'UP_TO_DIST'
 
+class RelationDirection(str, Enum):
+    INGOING = 'INGOING'
+    OUTGOING = 'OUTGOING'
+
 class NeoDistanceFilter(BaseModel):
     source_node: str
     dist: int
     strategy: DistanceFilterStrategy = DistanceFilterStrategy.UP_TO_DIST
+    direction: Optional[RelationDirection] = RelationDirection.OUTGOING
 
 class NeoLinksFilter(BaseModel):
     min_count: int = 0
     max_count: Optional[int] = None
     categories: Optional[List[str]] = None
+    direction: Optional[RelationDirection] = RelationDirection.OUTGOING
 
 # General Filters
 class IdsFilter(BaseModel):
