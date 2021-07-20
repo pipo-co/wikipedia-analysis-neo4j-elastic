@@ -1,5 +1,46 @@
 # Analisis de Wikipedia utilizando Neo4j y ElasticSearch
 
+## Dependencias
+
+- Python 3.8 o superior
+- Neo4j Server 4.3.1 o superior. Debe tener el plugin oficial Apoc correspondiente de la version instalado
+- Elasticsearch 7.13.3 o superior
+- El resto de las dependencias pueden instalarse ejecutando `pip install -r requirements.txt`
+
+## Correr el servidor
+
+Para ejecutar el servidor basta ejecutar `uvicorn main:app`. 
+El mismo se levantara automaticamente en `localhost:8000`.
+La documentacion OpenApi 3.0 generada automaticamente de los endpoints del servidor se puede encontrar en `localhost:8000/docs`.
+
+Para la configuracion inicial de las bases de datos se puede utilizar un archivo .env especificando variables de entorno.
+
+Una configuracion de ejemplo:
+```dotenv
+# General Config
+WIKI_OPEN_DBS_ON_STARTUP = true
+
+# Neo4j connection config
+WIKI_NEO_IP = localhost
+WIKI_NEO_PORT = 7687
+# WIKI_NEO_DB = default
+WIKI_NEO_USER = neo4j
+WIKI_NEO_PASS = tobias
+
+# ElasticSearch connection config
+WIKI_ES_IP = localhost
+WIKI_ES_PORT = 9200
+WIKI_ES_DB = wikipedia
+# WIKI_ES_USER = default
+# WIKI_ES_PASS = default
+```
+De todas maneras, las conexiones podran ser configuradas una vez inicializado el servidor en la pagina ...(TODO PECHI)
+
+## Endpoints principales
+
+- Para importar se debera ejecutar un pedido POST a `/api/import` con los parametros en el payload del request en formato json
+- Para realizar busquedas se debera ejecutar un pedido GET a `/api/search` con la query en formato json en el peyload del request
+
 ## Idea Principal
 La idea principal es crear una herramienta ETL que a partir de un articulo de wikipedia (articulo `centro`) y una distancia maxima (`radio`) se consigan todos los articulos que se puedan llegar a partir del articulo centro siguiendo los links a otros articulos de wikipedia dentro del contenido del mismo en menos de `radio` saltos. 
 
