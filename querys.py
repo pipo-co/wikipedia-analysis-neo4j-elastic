@@ -1,13 +1,8 @@
 from typing import List, Optional, Dict
 
-from elasticsearch_dsl.query import Q
-
-import dependencies
-from dependencies.settings import settings
-from models import ArticleNode, ArticleQuery, ElasticTextSearchFilter, IdsFilter, NeoDistanceFilter, NeoLinksFilter, \
-    QueryReturnTypes, SearchResponse
+from models import ArticleNode, ArticleQuery, IdsFilter, NeoDistanceFilter, NeoLinksFilter, QueryReturnTypes, SearchResponse
 from dependencies.databases import neo_instance, es_instance
-from repositories.neo4j_repo import Neo4jDistanceFilterBuilder, mapper
+from repositories.neo4j_repo import mapper
 
 
 async def process_query(query: ArticleQuery) -> SearchResponse:

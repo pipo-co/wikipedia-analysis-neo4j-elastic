@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Import</title>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:300,400,500,700" rel="stylesheet">
+    <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.5.0/css/all.css" integrity="sha384-B4dIYHKNBt8Bc12p+WXckhzcICo0wtJAoU8YZTY5qE0Id1GSseTk6S+L3BlXeVIU" crossorigin="anonymous">
+    <link href="{{ url_for('static', path='/css/style.css') }}" rel="stylesheet">
+  </head>
+  <body>
+    <div class="testbox">
+      <form method="post">
+        <div class="colums">
+          <div class="item">
+            <label for="center_page">Center Node<span>*</span></label>
+            <input id="center_page" type="text" name="center_page" required/>
+          </div>
+          <div class="item">
+            <label for="radius">Radius<span>*</span></label>
+            <input id="radius" type="number" name="radius" required/>
+          </div>
+          <div class="item">
+            <label for="lang">Wikipedia Language</label>
+            <input id="lang" list="langs" name="lang" value="en"/>
+          </div>
+          <div>
+            <label>Categories</label>
+            <div id="categories" style="width: 100%">
+              <div class="item" style="width: 100%">
+                <label for="category_1">Category 1<span>*</span></label>
+                <input id="category_1" type="text" name="categories" required/>
+              </div>
+            </div>
+            <div>
+              <button id="add_category" type="button">Another category</button>
+            </div>
+          </div>
+        </div>
+        <div class="btn-block">
+          <button type="submit">Submit</button>
+        </div>
+      </form>
+      <datalist id="langs">
+        {% for lang_id, lang_name in langs.items() %}
+          <option value="{{ lang_id }}">{{ lang_name }}</option>
+        {% endfor %}
+      </datalist>
+    </div>
+  </body>
+</html>
+
+<script>
+let i = 2;
+document.getElementById('add_category').onclick = function() {
+    let template = `
+          <label for="category_${i}">Category ${i}</label>
+          <input id="category_${i}" type="text" name="categories"/>
+`;
+
+    let container = document.getElementById('categories');
+    let div = document.createElement('div');
+
+    div.classList.add('item')
+    div.setAttribute('style', 'width: 100%')
+
+    div.innerHTML = template;
+    container.appendChild(div);
+
+    i++;
+}
+</script>

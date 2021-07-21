@@ -8,11 +8,11 @@
 </head>
   <body>
     <div class="testbox">
-      <form action="/graph" method="post" id="queryForm">
+      <form method="post" id="queryForm">
         <div class="colums">
           <div class="item">
             <label for="query">Query<span>*</span></label>
-            <textarea id="query" rows = "5" cols = "60" name = "query"></textarea>
+            <textarea id="query" rows="30" cols="60" name="query" required>{% if invalid_json %}Invalid JSON Provided. Please check your syntax and try again.{% endif %}</textarea>
           </div>
         </div>
         <div class="btn-block">

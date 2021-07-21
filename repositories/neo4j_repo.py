@@ -9,7 +9,6 @@ from typing import Any, List, Optional, Tuple, final, Dict
 import neo4j
 from neo4j import GraphDatabase, Session, Result, ResultSummary
 from neo4j.data import Record
-from neo4j.exceptions import ClientError
 
 class Neo4jRepository:
 

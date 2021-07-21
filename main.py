@@ -1,22 +1,19 @@
 import json
-import os
+from json import JSONDecodeError
 from pathlib import Path
-from typing import Dict, Optional, List
-from types import SimpleNamespace
+from typing import Dict, List
 
-import starlette.status as status
 import uvicorn
-from fastapi import FastAPI, Request, Form
+from fastapi import FastAPI, Form
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from mediawiki import mediawiki
 from pydantic import BaseModel, Field
-from starlette.responses import RedirectResponse
 from starlette.requests import Request
-from starlette.responses import Response
 
 from dependencies import databases
 from dependencies.settings import settings
-from models import ArticleNode, ArticleQuery, ImportSummary, SearchResponse
+from models import ArticleNode, ArticleQuery, ImportSummary, QueryReturnTypes
 from querys import strict_search_query, process_query
 from wikipedia_import import import_wiki
 
@@ -44,6 +41,7 @@ class WikipediaImportRequest(BaseModel):
     categories: List[str] = Field(..., title='Categorias', description='Solo importar articulos dentro de estas categorias. Requerido.')
     lang: str = Field('en', title='Idioma de Wikipedia', description='El idioma de la wikipedia a usar. Es opcional, defaultea a Ingles.')
 
+# Api
 
 @app.post("/api/import", response_model=ImportSummary)
 def wikipedia_import(import_request: WikipediaImportRequest):
@@ -57,44 +55,63 @@ def strict_search(source: str, string: str, leaps: int):
 async def search(query: ArticleQuery):
     return await process_query(query)
 
+@app.get("/reset")
+def reset():
+    databases.truncate_dbs()
+
+# Webpage
+
 @app.get("/")
-def searchForm(request: Request):
+def home(request: Request):
+    return templates.TemplateResponse('home.html', context={'request': request})
+
+@app.get("/import")
+def import_get(request: Request):
+    return templates.TemplateResponse('import.html', context={'request': request, 'langs': mediawiki.MediaWiki().supported_languages})
+
+@app.post("/import")
+def import_post(center_page: str = Form(...), radius: int = Form(...), categories: List[str] = Form(...), lang: str = Form('en')):
+    categories = [category for category in categories if len(category) > 0]
+    return import_wiki(center_page, radius, categories, lang)
+
+@app.get("/search")
+def search_get(request: Request):
     return templates.TemplateResponse('search.html', context={'request': request})
 
-# grafica la ultima query realizada, utiliza el archivo /static/json/data.json
-@app.post("/graph")
-async def graph(request: Request):
-    data = await request.form()
-    data = json.loads(data['query'])
-    query = ArticleQuery(**data)
-    searchResponse = await search(query)
+@app.post("/search")
+async def search_post(request: Request, query: str = Form(...)):
+    try:
+        data = json.loads(query)
+    except JSONDecodeError:
+        return templates.TemplateResponse('search.html', context={'request': request, 'invalid_json': True})
 
-    if data['return_type'] == "NODE":
-        result = article_node_to_graph(searchResponse.result)
+    query = ArticleQuery(**data)
+    search_response = await search(query)
+
+    if query.return_type == QueryReturnTypes.NODE or query.return_type == QueryReturnTypes.NODE_WITH_CONTENT:
+        result = article_node_to_graph(search_response.result)
         return templates.TemplateResponse('graph.html', context={'request': request, 'result': result})
     else:
-        return templates.TemplateResponse('normalResponse.html', context={'request': request, 'result': searchResponse.result})
-
-@app.get("/reset")
-async def reset(request: Request):
-    databases.truncate_dbs()
-    return RedirectResponse('/', status_code=status.HTTP_302_FOUND)
+        is_list: bool = query.return_type == QueryReturnTypes.TITLE or query.return_type == QueryReturnTypes.ID
+        return templates.TemplateResponse('normalResponse.html', context={'request': request, 'result': search_response.result, 'is_list': is_list})
 
 def article_node_to_graph(nodes: List[ArticleNode]) -> Dict[str, List]:
     
-    data ={
-        "nodes" : [],
-        "edges" : []
+    data = {
+        "nodes": [],
+        "edges": []
     }
 
     for node in nodes:
+        node.content = None
         data["nodes"].append(node.__dict__)
-        data["edges"].extend([{"from": node.id, "to":link.article_id} for link in node.links])
+        data["edges"].extend([{"from": node.id, "to": link.article_id} for link in node.links])
 
     for node in data["nodes"]:
         del node['links']
 
     return data
+
 
 # DEBUG
 if __name__ == "__main__":

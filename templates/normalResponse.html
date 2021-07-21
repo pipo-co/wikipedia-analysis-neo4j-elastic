@@ -9,10 +9,20 @@
   <body>
     <div class="testbox">
         <div class="container">
-            <div>{{result}}</div>
-            <div class="btn-block">
-                <a href="/" class="home-button"><button type="submit">New Query</button></a>
-            </div>
+          <div class="btn-block">
+            <a href="/search" class="home-button"><button type="submit">New Query</button></a>
+          </div>
+          <div style="width: 50%; margin: 0 auto">
+            {% if is_list %}
+              <ul>
+              {% for elem in result %}
+                <li>{{ elem }}</li>
+              {% endfor %}
+              </ul>
+            {% else %}
+              {{ result }}
+            {% endif %}
+          </div>
         </div>
     </div>
 </body>

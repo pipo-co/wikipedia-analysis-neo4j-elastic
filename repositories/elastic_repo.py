@@ -1,8 +1,7 @@
 from typing import Optional, List, Dict, Any, Iterator, Union, Tuple, overload, Literal
 
-from elasticsearch_dsl import Index, Document, Text, Keyword, Search, Q, response, analyzer, AttrList
+from elasticsearch_dsl import Index, Document, Text, Keyword, Search, Q, response, analyzer
 from elasticsearch_dsl.connections import connections
-from elasticsearch_dsl.response import Response
 
 from models import ElasticFilter, BoolOp, TextSearchField
 
