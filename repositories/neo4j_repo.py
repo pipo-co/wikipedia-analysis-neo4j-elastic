@@ -415,7 +415,7 @@ class Neo4jSortBuilder(Neo4jQueryBuilder):
         if self.sort.sort_by == SortByEnum.LINK_COUNT:
             str = "MATCH (n)-[links:Link]->(:Article)\n" \
                   "WITH n, count(links) as count\n" \
-                  f"ORDER BY count(links)\n {order}" \
+                  f"ORDER BY count(links) {order}\n" \
                   "WITH n"
         elif self.sort.sort_by == SortByEnum.ID:
             str = f"ORDER BY n.article_id {order}"
