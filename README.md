@@ -34,7 +34,6 @@ WIKI_ES_DB = wikipedia
 # WIKI_ES_USER = default
 # WIKI_ES_PASS = default
 ```
-De todas maneras, las conexiones podran ser configuradas una vez inicializado el servidor en la pagina ...(TODO PECHI)
 
 ## Endpoints principales
 
